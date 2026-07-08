@@ -18,3 +18,22 @@ td button.edit { font-size: .8rem; padding: .2rem .6rem; }
 .editor h2 { margin: 0 0 .3rem; font-size: 1.1rem; }
 .editor label { display: block; margin: .5rem 0; }
 .editor input { font-size: 1rem; padding: .3rem .4rem; width: 8rem; margin-left: .5rem; }
+.chart-head { margin: 1rem 0 .3rem; }
+.chart-head select { font-size: .95rem; padding: .25rem; }
+.charts { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+@media (max-width: 620px) { .charts { grid-template-columns: 1fr; } }
+.chart { margin: 0; border: 1px solid #8884; border-radius: .4rem; padding: .4rem; }
+.chart figcaption { font-size: .85rem; font-weight: 600; padding: 0 .2rem .2rem; }
+.c-latest { font-weight: 400; color: #38bdf8; }
+.chart svg { width: 100%; height: auto; display: block; }
+.c-line { fill: none; stroke: var(--chart-line); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.c-axis { stroke: #8886; stroke-width: 1; }
+.c-tick { fill: #999; font-size: 9px; }
+.c-empty { fill: #999; font-size: 11px; }
+:root { --chart-line: #0369a1; }
+@media (prefers-color-scheme: dark) { :root { --chart-line: #38bdf8; } }
+.c-band-safe { fill: #22c55e; opacity: .13; }
+.c-band-over { fill: #ef4444; opacity: .15; }
+.c-band-under { fill: #f59e0b; opacity: .15; }
+.c-ref { stroke: #999; stroke-width: 1; stroke-dasharray: 3 3; }
+.c-reflbl { fill: #aaa; font-size: 8px; }

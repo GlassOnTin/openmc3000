@@ -106,4 +106,6 @@ test("parseSlotProgram decodes the captured slot-1 program (fw 1.25)", () => {
   assert.equal(p.mode, 0);
   assert.equal(p.chargeCurrentMa, 1000);      // 0x03e8
   assert.equal(p.dischargeCurrentMa, 500);    // 0x01f4
+  assert.equal(p.dischargeCutMv, 3300);       // 0x0ce4
+  assert.equal(p.chargeEndMv, 4200);          // 0x1068
 });

@@ -121,6 +121,10 @@ export interface SlotProgram {
   capacityMah: number;
   chargeCurrentMa: number;
   dischargeCurrentMa: number;
+  /** Discharge cut-off (low target), mV — bytes 11-12. */
+  dischargeCutMv: number;
+  /** Charge-end / target voltage (high target), mV — bytes 13-14. */
+  chargeEndMv: number;
   /** The raw 0x5F reply — pass to buildSetProgram() to write it back with edits. */
   raw: Uint8Array;
 }
@@ -134,6 +138,8 @@ export function parseSlotProgram(r: Uint8Array): SlotProgram {
     capacityMah: be16(r, 5),
     chargeCurrentMa: be16(r, 7),
     dischargeCurrentMa: be16(r, 9),
+    dischargeCutMv: be16(r, 11),
+    chargeEndMv: be16(r, 13),
     raw: r,
   };
 }
