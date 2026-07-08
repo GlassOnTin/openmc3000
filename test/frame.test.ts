@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { buildFrame, checkReply, be16, REPORT_SIZE } from "../src/protocol/frame.ts";
-import { readLive, readSlotProgram, readSystem, start, stop, parseLive, parseSystem, buildSetProgram } from "../src/protocol/commands.ts";
+import { readLive, readSlotProgram, readSystem, start, stop, parseLive, parseSystem, parseSlotProgram, buildSetProgram } from "../src/protocol/commands.ts";
 
 const head = (f: Uint8Array, n: number) => Array.from(f.subarray(0, n));
 
@@ -94,4 +94,16 @@ test("buildSetProgram charge-current override changes only bytes 9,10 and checks
   const diffs = [];
   for (let i = 0; i < 36; i++) if (base[i] !== mod[i]) diffs.push(i);
   assert.deepEqual(diffs, [9, 10, 33]);               // current hi/lo + checksum only
+});
+
+test("parseSlotProgram decodes the captured slot-1 program (fw 1.25)", () => {
+  const r = new Uint8Array(REPORT_SIZE);
+  r.set([0x5f,0x00,0x00,0x00,0x00,0x00,0x00,0x03,0xe8,0x01,0xf4,0x0c,0xe4,0x10,0x68,0x00,
+         0x64,0x01,0xf4,0x01,0x00,0x00,0x03,0x03,0x00,0x00,0x2d,0x00,0xb4,0x00,0x00,0x00], 0);
+  const p = parseSlotProgram(r);
+  assert.equal(p.slot, 0);
+  assert.equal(p.batteryType, "LiIon");
+  assert.equal(p.mode, 0);
+  assert.equal(p.chargeCurrentMa, 1000);      // 0x03e8
+  assert.equal(p.dischargeCurrentMa, 500);    // 0x01f4
 });

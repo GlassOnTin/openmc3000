@@ -13,3 +13,8 @@ tr.charging { background: color-mix(in srgb, #38bdf8 18%, transparent); }
 .note { color: #888; font-size: .85rem; }
 .err { color: #e11; }
 .status { color: #d80; font-size: .85rem; min-height: 1.2em; margin: .3rem 0; }
+td button.edit { font-size: .8rem; padding: .2rem .6rem; }
+.editor { border: 1px solid #8886; border-radius: .5rem; padding: 1rem; margin: 1rem 0; }
+.editor h2 { margin: 0 0 .3rem; font-size: 1.1rem; }
+.editor label { display: block; margin: .5rem 0; }
+.editor input { font-size: 1rem; padding: .3rem .4rem; width: 8rem; margin-left: .5rem; }

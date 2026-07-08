@@ -1,6 +1,7 @@
 import "./style.css";
 import {
-  parseLive, parseSystem, readLive, readSystem, start, stop, type Live,
+  buildSetProgram, isSetProgramAck, parseLive, parseSlotProgram, parseSystem,
+  readLive, readSlotProgram, readSystem, start, stop, type Live,
 } from "../../src/protocol/commands.ts";
 import { checkReply } from "../../src/protocol/frame.ts";
 import { request, type Transport } from "../../src/transport/transport.ts";
@@ -45,7 +46,9 @@ function slotRow(l: Live): string {
        <td>${power}</td>`
     : `<td colspan="6" class="empty">— empty —</td>`;
   const charging = l.statusRaw === 1;
-  return `<tr class="${charging ? "charging" : ""}"><th>Slot ${l.slot + 1}</th>${cells}</tr>`;
+  // editing writes a slot's program; block it while that slot is actively running.
+  const edit = `<td><button class="edit" data-slot="${l.slot}" ${running ? "disabled" : ""}>edit</button></td>`;
+  return `<tr class="${charging ? "charging" : ""}"><th>Slot ${l.slot + 1}</th>${cells}${edit}</tr>`;
 }
 
 function setStatus(msg: string) {
@@ -94,6 +97,77 @@ async function onStop() {
   setStatus("");
 }
 
+// --- slot program editing -------------------------------------------------
+// Only charge/discharge current are exposed (both verified round-trip on fw 1.25).
+// Every other field (battery type, mode, cut-offs) is preserved verbatim from the
+// slot's own program by buildSetProgram(), so a save never changes them.
+const CHARGE_MAX = 3000, DISCHARGE_MAX = 2000;   // MC3000 hardware limits (mA)
+
+function closeEditor() {
+  const el = document.getElementById("editor");
+  if (el) el.innerHTML = "";
+  startPolling();
+}
+
+async function openEditor(slot: number) {
+  stopPolling();
+  setStatus(`reading slot ${slot + 1} program…`);
+  let p;
+  try {
+    const reply = await withLock(() => request(transport!, readSlotProgram(slot)));
+    if (!checkReply(reply)) throw new Error("bad program checksum");
+    p = parseSlotProgram(reply);
+  } catch (e) {
+    setStatus(`could not read slot ${slot + 1}: ${(e as Error).message}`);
+    startPolling();
+    return;
+  }
+  setStatus("");
+  const el = document.getElementById("editor")!;
+  el.innerHTML = `
+    <div class="editor">
+      <h2>Slot ${slot + 1} — edit program</h2>
+      <p class="dev">${p.batteryType} · mode ${p.mode} · ${p.capacityMah} mAh (these are preserved unchanged)</p>
+      <label>Charge current (mA)
+        <input id="ed-chg" type="number" min="0" max="${CHARGE_MAX}" step="50" value="${p.chargeCurrentMa}"></label>
+      <label>Discharge current (mA)
+        <input id="ed-dis" type="number" min="0" max="${DISCHARGE_MAX}" step="50" value="${p.dischargeCurrentMa}"></label>
+      <div class="controls">
+        <button id="ed-save">Save to slot ${slot + 1}</button>
+        <button id="ed-cancel">Cancel</button>
+      </div>
+      <p id="ed-msg" class="status"></p>
+    </div>`;
+  document.getElementById("ed-cancel")!.addEventListener("click", closeEditor);
+  document.getElementById("ed-save")!.addEventListener("click", () => saveEditor(slot, p.raw));
+}
+
+async function saveEditor(slot: number, raw: Uint8Array) {
+  const msg = (m: string) => { const e = document.getElementById("ed-msg"); if (e) e.textContent = m; };
+  const chg = Number((document.getElementById("ed-chg") as HTMLInputElement).value);
+  const dis = Number((document.getElementById("ed-dis") as HTMLInputElement).value);
+  const bad = (v: number, max: number) => !Number.isInteger(v) || v < 0 || v > max;
+  if (bad(chg, CHARGE_MAX) || bad(dis, DISCHARGE_MAX)) {
+    msg(`values must be whole mA within 0–${CHARGE_MAX} (charge) / 0–${DISCHARGE_MAX} (discharge)`);
+    return;
+  }
+  msg("writing…");
+  try {
+    const ack = await withLock(() =>
+      request(transport!, buildSetProgram(raw, slot, { chargeCurrentMa: chg, dischargeCurrentMa: dis })));
+    if (!isSetProgramAck(ack)) throw new Error(`charger rejected the write (0x${ack[0].toString(16)})`);
+    // read back and confirm the values actually took
+    const back = parseSlotProgram(await withLock(() => request(transport!, readSlotProgram(slot))));
+    if (back.chargeCurrentMa !== chg || back.dischargeCurrentMa !== dis) {
+      throw new Error(`read-back mismatch: charger has ${back.chargeCurrentMa}/${back.dischargeCurrentMa} mA`);
+    }
+    setStatus(`slot ${slot + 1} saved: ${chg} mA charge / ${dis} mA discharge`);
+    closeEditor();
+  } catch (e) {
+    msg((e as Error).message);
+  }
+}
+
 async function connect() {
   const t = await WebHidTransport.request();
   if (!t) return;                       // user dismissed the chooser
@@ -118,10 +192,17 @@ function renderConnected(name: string, serial: string, fw: string, hw: string) {
     </div>
     <table><tbody id="slots"></tbody></table>
     <p id="status" class="status"></p>
-    <p class="note">Start/Stop are global — the MC3000 has no per-slot start over USB/BLE.</p>
+    <div id="editor"></div>
+    <p class="note">Start/Stop are global — the MC3000 has no per-slot start over USB/BLE.
+       Editing writes charge/discharge current only; other program fields are preserved.</p>
   `);
   document.getElementById("start")!.addEventListener("click", onStart);
   document.getElementById("stop")!.addEventListener("click", onStop);
+  // delegated: slot rows (hence edit buttons) are regenerated every poll
+  document.getElementById("slots")!.addEventListener("click", (e) => {
+    const btn = (e.target as HTMLElement).closest(".edit") as HTMLButtonElement | null;
+    if (btn && !btn.disabled) openEditor(Number(btn.dataset.slot));
+  });
 }
 
 function renderDisconnected(msg = "") {

@@ -114,6 +114,30 @@ export interface System {
   hardware: string;
 }
 
+export interface SlotProgram {
+  slot: number;
+  batteryType: string;
+  mode: number;
+  capacityMah: number;
+  chargeCurrentMa: number;
+  dischargeCurrentMa: number;
+  /** The raw 0x5F reply — pass to buildSetProgram() to write it back with edits. */
+  raw: Uint8Array;
+}
+
+/** Decode a SLOT_PROGRAM (0x5F) reply. Offsets verified on fw 1.25 for the current fields. */
+export function parseSlotProgram(r: Uint8Array): SlotProgram {
+  return {
+    slot: r[1],
+    batteryType: BATTERY_TYPES[r[3]] ?? `unknown(${r[3]})`,
+    mode: r[4],
+    capacityMah: be16(r, 5),
+    chargeCurrentMa: be16(r, 7),
+    dischargeCurrentMa: be16(r, 9),
+    raw: r,
+  };
+}
+
 /** Machine-id block starts at offset 16 of the SYSTEM (0x5A) reply. Verified on fw 1.25. */
 export function parseSystem(r: Uint8Array): System {
   const mid = r.subarray(16, 32);
