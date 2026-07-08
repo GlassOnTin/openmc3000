@@ -77,11 +77,18 @@ export function parseLive(r: Uint8Array): Live {
  *
  * Overrides are in the same units the device reports (mA, mV).
  */
-export function buildSetProgram(
-  readReply: Uint8Array,
-  slot: number,
-  o: { chargeCurrentMa?: number; dischargeCurrentMa?: number } = {},
-): Uint8Array {
+export interface ProgramEdits {
+  batteryType?: number;
+  operationMode?: number;
+  capacityMah?: number;
+  chargeCurrentMa?: number;
+  dischargeCurrentMa?: number;
+  dischargeCutMv?: number;
+  chargeEndMv?: number;
+  chargeEndCurrentMa?: number;
+}
+
+export function buildSetProgram(readReply: Uint8Array, slot: number, o: ProgramEdits = {}): Uint8Array {
   const rb = readReply;
   const w = new Uint8Array(REPORT_SIZE);
   w.set([0x0f, 0x20, 0x11, 0x00, slot, rb[3]]);
@@ -96,8 +103,15 @@ export function buildSetProgram(
   w[28] = rb[26];                    // cut temperature
   w[29] = rb[27]; w[30] = rb[28];    // cut time
   w[31] = rb[24]; w[32] = rb[25];    // restart voltage
-  if (o.chargeCurrentMa !== undefined) { w[9] = o.chargeCurrentMa >> 8; w[10] = o.chargeCurrentMa & 0xff; }
-  if (o.dischargeCurrentMa !== undefined) { w[11] = o.dischargeCurrentMa >> 8; w[12] = o.dischargeCurrentMa & 0xff; }
+  const put16 = (i: number, v: number) => { w[i] = (v >> 8) & 0xff; w[i + 1] = v & 0xff; };
+  if (o.batteryType !== undefined) w[5] = o.batteryType;
+  if (o.capacityMah !== undefined) put16(6, o.capacityMah);
+  if (o.operationMode !== undefined) w[8] = o.operationMode;
+  if (o.chargeCurrentMa !== undefined) put16(9, o.chargeCurrentMa);
+  if (o.dischargeCurrentMa !== undefined) put16(11, o.dischargeCurrentMa);
+  if (o.dischargeCutMv !== undefined) put16(13, o.dischargeCutMv);
+  if (o.chargeEndMv !== undefined) put16(15, o.chargeEndMv);
+  if (o.chargeEndCurrentMa !== undefined) put16(17, o.chargeEndCurrentMa);
   let sum = 0;                       // checksum = sum(w[2..32]) inclusive
   for (let i = 2; i <= 32; i++) sum += w[i];
   w[33] = sum & 0xff;
@@ -125,6 +139,8 @@ export interface SlotProgram {
   dischargeCutMv: number;
   /** Charge-end / target voltage (high target), mV — bytes 13-14. */
   chargeEndMv: number;
+  /** Charge termination current, mA — bytes 15-16. */
+  chargeEndCurrentMa: number;
   /** The raw 0x5F reply — pass to buildSetProgram() to write it back with edits. */
   raw: Uint8Array;
 }
@@ -140,6 +156,7 @@ export function parseSlotProgram(r: Uint8Array): SlotProgram {
     dischargeCurrentMa: be16(r, 9),
     dischargeCutMv: be16(r, 11),
     chargeEndMv: be16(r, 13),
+    chargeEndCurrentMa: be16(r, 15),
     raw: r,
   };
 }

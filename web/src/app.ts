@@ -1,7 +1,8 @@
 import "./style.css";
 import {
-  buildSetProgram, isSetProgramAck, parseLive, parseSlotProgram, parseSystem,
-  readLive, readSlotProgram, readSystem, start, stop, type Live, type SlotProgram,
+  BATTERY_TYPES, buildSetProgram, isSetProgramAck, parseLive, parseSlotProgram, parseSystem,
+  readLive, readSlotProgram, readSystem, start, stop,
+  type Live, type ProgramEdits, type SlotProgram,
 } from "../../src/protocol/commands.ts";
 import { checkReply } from "../../src/protocol/frame.ts";
 import { request, type Transport } from "../../src/transport/transport.ts";
@@ -216,10 +217,30 @@ async function onStop() {
 }
 
 // --- slot program editing -------------------------------------------------
-// Only charge/discharge current are exposed (both verified round-trip on fw 1.25).
-// Every other field (battery type, mode, cut-offs) is preserved verbatim from the
-// slot's own program by buildSetProgram(), so a save never changes them.
-const CHARGE_MAX = 3000, DISCHARGE_MAX = 2000;   // MC3000 hardware limits (mA)
+// All fields below are verified to round-trip on fw 1.25 (buildSetProgram offsets
+// tested on hardware). Fields not exposed here (cycle count/mode, −ΔV peak sense,
+// trickle, cut temp/time, resting times) are preserved verbatim by the repack.
+// Operation-mode labels are chemistry-dependent, so they track the selected type.
+const LIMIT = { chg: 3000, dis: 2000, cap: 60000, mv: 4500, endi: 1000 };  // MC3000 field bounds
+const MODES_LI = ["Charge", "Refresh", "Storage", "Discharge", "Cycle"];
+const MODES_NI = ["Charge", "Refresh", "Break-in", "Discharge", "Cycle"];
+const MODES_ZN = ["Charge", "Refresh", "Discharge", "Cycle"];
+// Conservative, chemistry-standard defaults for "reset to defaults" (mV). Currents
+// are the same gentle values for all chemistries; the user reviews before saving.
+const DEFAULT_V: Record<string, { targetMv: number; cutMv: number }> = {
+  LiIon: { targetMv: 4200, cutMv: 2750 }, "LiIo4.35": { targetMv: 4350, cutMv: 2750 },
+  LiFe: { targetMv: 3600, cutMv: 2000 }, NiMH: { targetMv: 1500, cutMv: 900 },
+  NiCd: { targetMv: 1500, cutMv: 900 }, Eneloop: { targetMv: 1500, cutMv: 900 },
+  NiZn: { targetMv: 1900, cutMv: 1200 }, RAM: { targetMv: 1650, cutMv: 900 },
+};
+const DEFAULT_CHG_MA = 1000, DEFAULT_DIS_MA = 500, DEFAULT_ENDI_MA = 100;
+const modeSetFor = (type: string) =>
+  ["NiMH", "NiCd", "Eneloop"].includes(type) ? MODES_NI
+    : ["NiZn", "RAM"].includes(type) ? MODES_ZN : MODES_LI;
+
+function modeOptions(type: string, selected: number): string {
+  return modeSetFor(type).map((m, i) => `<option value="${i}" ${i === selected ? "selected" : ""}>${m}</option>`).join("");
+}
 
 function closeEditor() {
   const el = document.getElementById("editor");
@@ -241,47 +262,85 @@ async function openEditor(slot: number) {
     return;
   }
   setStatus("");
-  const el = document.getElementById("editor")!;
-  el.innerHTML = `
+  const typeOpts = BATTERY_TYPES.map((b) => `<option value="${b}" ${b === p.batteryType ? "selected" : ""}>${b}</option>`).join("");
+  const num = (id: string, label: string, val: number | string, max: number, step: number) =>
+    `<label>${label}<input id="${id}" type="number" min="0" max="${max}" step="${step}" value="${val}"></label>`;
+  document.getElementById("editor")!.innerHTML = `
     <div class="editor">
       <h2>Slot ${slot + 1} — edit program</h2>
-      <p class="dev">${p.batteryType} · mode ${p.mode} · ${p.capacityMah} mAh (these are preserved unchanged)</p>
-      <label>Charge current (mA)
-        <input id="ed-chg" type="number" min="0" max="${CHARGE_MAX}" step="50" value="${p.chargeCurrentMa}"></label>
-      <label>Discharge current (mA)
-        <input id="ed-dis" type="number" min="0" max="${DISCHARGE_MAX}" step="50" value="${p.dischargeCurrentMa}"></label>
+      <div class="grid">
+        <label>Battery type<select id="ed-type">${typeOpts}</select></label>
+        <label>Mode<select id="ed-mode">${modeOptions(p.batteryType, p.mode)}</select></label>
+        ${num("ed-cap", "Capacity (mAh)", p.capacityMah, LIMIT.cap, 100)}
+        ${num("ed-chg", "Charge current (mA)", p.chargeCurrentMa, LIMIT.chg, 50)}
+        ${num("ed-dis", "Discharge current (mA)", p.dischargeCurrentMa, LIMIT.dis, 50)}
+        ${num("ed-end", "Target voltage (V)", (p.chargeEndMv / 1000).toFixed(2), LIMIT.mv / 1000, 0.05)}
+        ${num("ed-cut", "Cut-off voltage (V)", (p.dischargeCutMv / 1000).toFixed(2), LIMIT.mv / 1000, 0.05)}
+        ${num("ed-endi", "Termination current (mA)", p.chargeEndCurrentMa, LIMIT.endi, 10)}
+      </div>
       <div class="controls">
         <button id="ed-save">Save to slot ${slot + 1}</button>
+        <button id="ed-reset">Reset to defaults</button>
         <button id="ed-cancel">Cancel</button>
       </div>
       <p id="ed-msg" class="status"></p>
+      <p class="note">Reset fills chemistry-standard defaults into the form (review, then Save).
+        The charger clamps values to the chosen chemistry; the saved result is read back and shown.</p>
     </div>`;
+  const typeSel = document.getElementById("ed-type") as HTMLSelectElement;
+  const modeSel = document.getElementById("ed-mode") as HTMLSelectElement;
+  const setInput = (id: string, v: string | number) => { (document.getElementById(id) as HTMLInputElement).value = String(v); };
+  typeSel.addEventListener("change", () => { modeSel.innerHTML = modeOptions(typeSel.value, Number(modeSel.value)); });
+  document.getElementById("ed-reset")!.addEventListener("click", () => {
+    const d = DEFAULT_V[typeSel.value] ?? DEFAULT_V.LiIon;
+    modeSel.value = "0";                               // Charge
+    setInput("ed-cap", 0);
+    setInput("ed-chg", DEFAULT_CHG_MA);
+    setInput("ed-dis", DEFAULT_DIS_MA);
+    setInput("ed-end", (d.targetMv / 1000).toFixed(2));
+    setInput("ed-cut", (d.cutMv / 1000).toFixed(2));
+    setInput("ed-endi", DEFAULT_ENDI_MA);
+    (document.getElementById("ed-msg")!).textContent = `defaults for ${typeSel.value} filled — review and Save`;
+  });
   document.getElementById("ed-cancel")!.addEventListener("click", closeEditor);
   document.getElementById("ed-save")!.addEventListener("click", () => saveEditor(slot, p.raw));
 }
 
 async function saveEditor(slot: number, raw: Uint8Array) {
   const msg = (m: string) => { const e = document.getElementById("ed-msg"); if (e) e.textContent = m; };
-  const chg = Number((document.getElementById("ed-chg") as HTMLInputElement).value);
-  const dis = Number((document.getElementById("ed-dis") as HTMLInputElement).value);
-  const bad = (v: number, max: number) => !Number.isInteger(v) || v < 0 || v > max;
-  if (bad(chg, CHARGE_MAX) || bad(dis, DISCHARGE_MAX)) {
-    msg(`values must be whole mA within 0–${CHARGE_MAX} (charge) / 0–${DISCHARGE_MAX} (discharge)`);
+  const val = (id: string) => Number((document.getElementById(id) as HTMLInputElement).value);
+  const edits: ProgramEdits = {
+    batteryType: BATTERY_TYPES.indexOf((document.getElementById("ed-type") as HTMLSelectElement).value as typeof BATTERY_TYPES[number]),
+    operationMode: val("ed-mode"),
+    capacityMah: val("ed-cap"),
+    chargeCurrentMa: val("ed-chg"),
+    dischargeCurrentMa: val("ed-dis"),
+    chargeEndMv: Math.round(val("ed-end") * 1000),
+    dischargeCutMv: Math.round(val("ed-cut") * 1000),
+    chargeEndCurrentMa: val("ed-endi"),
+  };
+  const checks: [number, number][] = [
+    [edits.chargeCurrentMa!, LIMIT.chg], [edits.dischargeCurrentMa!, LIMIT.dis],
+    [edits.capacityMah!, LIMIT.cap], [edits.chargeEndMv!, LIMIT.mv],
+    [edits.dischargeCutMv!, LIMIT.mv], [edits.chargeEndCurrentMa!, LIMIT.endi],
+  ];
+  if (checks.some(([v, max]) => !Number.isFinite(v) || v < 0 || v > max)) {
+    msg("a value is out of range — check the limits and try again");
     return;
   }
   msg("writing…");
   try {
-    const ack = await withLock(() =>
-      request(transport!, buildSetProgram(raw, slot, { chargeCurrentMa: chg, dischargeCurrentMa: dis })));
+    const ack = await withLock(() => request(transport!, buildSetProgram(raw, slot, edits)));
     if (!isSetProgramAck(ack)) throw new Error(`charger rejected the write (0x${ack[0].toString(16)})`);
-    // read back and confirm the values actually took
     const back = parseSlotProgram(await withLock(() => request(transport!, readSlotProgram(slot))));
-    if (back.chargeCurrentMa !== chg || back.dischargeCurrentMa !== dis) {
-      throw new Error(`read-back mismatch: charger has ${back.chargeCurrentMa}/${back.dischargeCurrentMa} mA`);
-    }
     programs[slot] = back;                 // keep chart targets in sync with the edit
-    setStatus(`slot ${slot + 1} saved: ${chg} mA charge / ${dis} mA discharge`);
-    closeEditor();
+    // The charger may clamp to chemistry limits — report what it actually stored.
+    const clamped = back.chargeEndMv !== edits.chargeEndMv || back.dischargeCutMv !== edits.dischargeCutMv
+      || back.chargeCurrentMa !== edits.chargeCurrentMa;
+    // Confirm in the editor (the 1 Hz poll would instantly clobber a setStatus), then close.
+    msg(`saved ✓${clamped ? " — charger adjusted to chemistry limits" : ""}: ${back.batteryType} · `
+      + `${modeSetFor(back.batteryType)[back.mode] ?? back.mode} · ${back.chargeCurrentMa} mA → ${(back.chargeEndMv / 1000).toFixed(2)} V`);
+    setTimeout(closeEditor, 1600);
   } catch (e) {
     msg((e as Error).message);
   }
