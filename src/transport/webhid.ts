@@ -17,15 +17,23 @@ const PID = 0x0001;
 export class WebHidTransport implements Transport {
   private queue: Uint8Array[] = [];
   private waiter: ((r: Uint8Array) => void) | null = null;
+  private disconnectCb: (() => void) | null = null;
   private readonly onReport = (e: HIDInputReportEvent) => {
     const r = new Uint8Array(e.data.buffer);
     if (this.waiter) { const w = this.waiter; this.waiter = null; w(r); }
     else this.queue.push(r);
   };
+  private readonly onHidDisconnect = (e: HIDConnectionEvent) => {
+    if (e.device === this.device) this.disconnectCb?.();
+  };
 
   private constructor(private device: HIDDevice) {
     device.addEventListener("inputreport", this.onReport);
+    navigator.hid.addEventListener("disconnect", this.onHidDisconnect);
   }
+
+  /** Called when the physical device is unplugged (authoritative — not a read error). */
+  onDisconnect(cb: () => void): void { this.disconnectCb = cb; }
 
   /** Prompt the user to pick the charger, open it, and wrap it. Must run in a user gesture. */
   static async request(): Promise<WebHidTransport | null> {
@@ -56,6 +64,7 @@ export class WebHidTransport implements Transport {
 
   async close(): Promise<void> {
     this.device.removeEventListener("inputreport", this.onReport);
+    navigator.hid.removeEventListener("disconnect", this.onHidDisconnect);
     if (this.device.opened) await this.device.close();
   }
 

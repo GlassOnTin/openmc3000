@@ -12,3 +12,4 @@ tr.charging { background: color-mix(in srgb, #38bdf8 18%, transparent); }
 .empty { color: #999; text-align: center; }
 .note { color: #888; font-size: .85rem; }
 .err { color: #e11; }
+.status { color: #d80; font-size: .85rem; min-height: 1.2em; margin: .3rem 0; }
