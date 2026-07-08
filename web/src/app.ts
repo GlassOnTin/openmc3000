@@ -45,10 +45,11 @@ function slotRow(l: Live): string {
        <td>${l.currentMa} mA</td><td>${l.capacityMah} mAh</td>
        <td>${power}</td>`
     : `<td colspan="6" class="empty">— empty —</td>`;
+  const temp = `<td>${(l.temperatureRaw / 10).toFixed(1)} °C</td>`;   // slot sensor, present or not
   const charging = l.statusRaw === 1;
   // editing writes a slot's program; block it while that slot is actively running.
   const edit = `<td><button class="edit" data-slot="${l.slot}" ${running ? "disabled" : ""}>edit</button></td>`;
-  return `<tr class="${charging ? "charging" : ""}"><th>Slot ${l.slot + 1}</th>${cells}${edit}</tr>`;
+  return `<tr class="${charging ? "charging" : ""}"><th>Slot ${l.slot + 1}</th>${cells}${temp}${edit}</tr>`;
 }
 
 function setStatus(msg: string) {
@@ -59,12 +60,13 @@ function setStatus(msg: string) {
 // --- live charts ----------------------------------------------------------
 // 4 per-slot small multiples, all showing ONE measure at a time (single axis
 // each — never a dual voltage/current axis). Selector switches all four.
-type Sample = { v: number; i: number; cap: number };
-type Measure = "v" | "i" | "cap";
+type Sample = { v: number; i: number; cap: number; t: number };
+type Measure = "v" | "i" | "cap" | "t";
 const MEASURES: Record<Measure, { label: string; unit: string; pick: (s: Sample) => number; fmt: (n: number) => string; zeroBased: boolean }> = {
   v:   { label: "Voltage", unit: "V",   pick: (s) => s.v / 1000, fmt: (n) => n.toFixed(2), zeroBased: false },
   i:   { label: "Current", unit: "mA",  pick: (s) => s.i,        fmt: (n) => n.toFixed(0), zeroBased: true },
   cap: { label: "Capacity", unit: "mAh", pick: (s) => s.cap,     fmt: (n) => n.toFixed(0), zeroBased: true },
+  t:   { label: "Temperature", unit: "°C", pick: (s) => s.t / 10, fmt: (n) => n.toFixed(1), zeroBased: false },
 };
 const HISTORY_MAX = 600;                       // ~10 min at 1 Hz
 const history: Sample[][] = [[], [], [], []];
@@ -174,12 +176,12 @@ async function refresh() {
         const present = l.voltageMv > 0 || l.statusRaw !== 0;
         if (present) {
           const buf = history[s];
-          buf.push({ v: l.voltageMv, i: l.currentMa, cap: l.capacityMah });
+          buf.push({ v: l.voltageMv, i: l.currentMa, cap: l.capacityMah, t: l.temperatureRaw });
           if (buf.length > HISTORY_MAX) buf.shift();
         }
       } catch {
         errs++;
-        rows.push(`<tr><th>Slot ${s + 1}</th><td colspan="6" class="empty">read error, retrying…</td><td></td></tr>`);
+        rows.push(`<tr><th>Slot ${s + 1}</th><td colspan="7" class="empty">read error, retrying…</td><td></td></tr>`);
       }
     }
     const el = document.getElementById("slots");
@@ -308,7 +310,10 @@ function renderConnected(name: string, serial: string, fw: string, hw: string) {
       <button id="start">▶ Start (all)</button>
       <button id="stop">■ Stop (all)</button>
     </div>
-    <table><tbody id="slots"></tbody></table>
+    <table>
+      <thead><tr><th>Slot</th><th>Type</th><th>Status</th><th>Voltage</th><th>Current</th><th>Capacity</th><th>Power</th><th>Temp</th><th></th></tr></thead>
+      <tbody id="slots"></tbody>
+    </table>
     <p id="status" class="status"></p>
     <div id="editor"></div>
     <div class="chart-head">
@@ -317,6 +322,7 @@ function renderConnected(name: string, serial: string, fw: string, hw: string) {
           <option value="v">Voltage (V)</option>
           <option value="i">Current (mA)</option>
           <option value="cap">Capacity (mAh)</option>
+          <option value="t">Temperature (°C)</option>
         </select>
       </label>
     </div>

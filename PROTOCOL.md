@@ -125,7 +125,7 @@ Offsets cross-checked against `MC3000.convertDataBytes()` and `MC3000.java:1608,
 | `8..9`   | voltage, mV | **[verified]** |
 | `10..11` | current, mA | **[verified]** |
 | `12..13` | capacity, mAh | **[verified]** |
-| `14..15` | temperature | `304` idle at room temp (≈30.4 °C), unchanged under brief load; **[verified present]**, 0.1 °C scale **[unverified]** (no reference thermometer). Earlier "315" reads were stale (undrained queue), not a different offset. |
+| `14..15` | temperature, 0.1 °C | **[verified]** as temperature: while one slot charged at 2 A it read `290` (29.0 °C) vs empty slots `277`–`284` (27.7–28.4 °C) — the active slot runs warmer, and values are only physically sensible as 0.1 °C (as °F or whole-°C they're absurd). Absolute scale not checked against a reference thermometer, and may follow the device's °C/°F unit setting. |
 | `16..17` | resistance? | `0` idle, `22` under load; **[verified present]**, mΩ scale **[unverified]** |
 | `18..19` | — | reads `300`; **[unverified]** |
 | `20..21` | energy | firmware ≥ 1.05; `2` under load **[unverified]** |

@@ -37,3 +37,4 @@ td button.edit { font-size: .8rem; padding: .2rem .6rem; }
 .c-band-under { fill: #f59e0b; opacity: .15; }
 .c-ref { stroke: #999; stroke-width: 1; stroke-dasharray: 3 3; }
 .c-reflbl { fill: #aaa; font-size: 8px; }
+thead th { color: #999; font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; border-bottom: 1px solid #8886; }
