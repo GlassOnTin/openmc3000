@@ -2,11 +2,20 @@
 
 Interoperability notes for the MC3000's USB-HID control protocol.
 
-**Provenance.** This is *not* a clean-room derivation. The framing and command set were
-established by reading [GNU DataExplorer](https://www.nongnu.org/dataexplorer/) 4.0.6
-(GPL-3.0-or-later, `SkyRC/src/gde/device/skyrc/`) and then verified byte-for-byte against
-the hardware. Where a fact came from DataExplorer, the file and line are cited. No code
-was copied. This project is AGPL-3.0-or-later; GPLv3 §13 permits the combination.
+**Provenance.** Two sources, **neither of them SkyRC's proprietary software**:
+
+1. **[GNU DataExplorer](https://www.nongnu.org/dataexplorer/) 4.0.6** (GPL-3.0-or-later,
+   `SkyRC/src/gde/device/skyrc/`) — read openly for the framing, command codes and field
+   offsets, then verified byte-for-byte against the hardware. Facts are cited by file and
+   line; no code was copied. This is a credited GPL derivative — *not* clean-room — and
+   GPLv3 §13 permits combining it into this AGPL-3.0-or-later work.
+2. **Direct probing of the device** — write a known value, read it back, match the bytes.
+
+No SkyRC binary or firmware was decompiled, disassembled, or copied, and no SkyRC code,
+resources, or firmware are included or derived from. Everything below is either taken from
+DataExplorer (above) or established by observing the **device's** own USB-HID interface —
+interface facts (command codes, register offsets, wire framing), not copyrightable
+expression.
 
 Each claim below is marked **[verified]** (observed on hardware) or **[unverified]**.
 Hardware used: MC3000 **firmware 1.25, hardware 2.2** (verified 2026-07-08). Several LIVE

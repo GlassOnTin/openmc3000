@@ -57,10 +57,23 @@ not validate that a slot's program suits the cell you put in it.
 
 ## Legal
 
-Independent interoperability implementation. **Not** a clean-room derivation: the protocol
-was established by reading GNU DataExplorer (GPL-3.0-or-later) and verifying against
-hardware — see the provenance note in [`PROTOCOL.md`](PROTOCOL.md). "SkyRC" is a trademark
-of SkyRC Technology; this project is not affiliated with or endorsed by them.
+Independent interoperability implementation, from two sources — **neither of them SkyRC's
+proprietary software**:
+
+- **GNU DataExplorer** (GPL-3.0-or-later): its MC3000 plugin was read openly for the wire
+  framing, command codes and field offsets. This is an openly-credited GPL derivative — not
+  clean-room — and GPLv3 §13 permits combining it into this AGPL-3.0 work. Facts are cited
+  by file and line in [`PROTOCOL.md`](PROTOCOL.md); no code was copied.
+- **Direct observation of the device**: values confirmed by writing a known setting over
+  USB-HID and reading it back.
+
+No SkyRC binary or firmware was decompiled, disassembled, or copied, and no SkyRC code,
+resources, or firmware are included or derived from. The documented items — command codes,
+register offsets, wire framing — come from DataExplorer and from observing the device's own
+USB-HID interface; they are interface facts, not copyrightable expression.
+
+"SkyRC" and "MC3000" are trademarks of SkyRC Technology Co., Ltd. This project is independent
+and not affiliated with or endorsed by them.
 
 Licensed under **GNU AGPL-3.0-or-later** (see `LICENSE`).
 
