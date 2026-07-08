@@ -1,5 +1,5 @@
 #!/usr/bin/env -S node --experimental-strip-types
-import { parseLive, readLive, start, stop } from "./protocol/commands.ts";
+import { parseLive, parseSystem, readLive, readSystem, start, stop } from "./protocol/commands.ts";
 import { checkReply } from "./protocol/frame.ts";
 import { HidrawTransport } from "./transport/hidraw.ts";
 import { request, type Transport } from "./transport/transport.ts";
@@ -29,6 +29,11 @@ async function main() {
         for (let s = 0; s < 4; s++) console.log(format(await live(t, s)));
         break;
       }
+      case "system": {
+        const s = parseSystem(await request(t, readSystem()));
+        console.log(`serial ${s.serial}  firmware ${s.firmware}  hardware ${s.hardware}`);
+        break;
+      }
       case "watch": {
         for (;;) {
           const rows = [];
@@ -48,7 +53,7 @@ async function main() {
         for (let s = 0; s < 4; s++) console.log(format(await live(t, s)));
         break;
       default:
-        console.error(`usage: mc3000 [status|watch|start|stop]`);
+        console.error(`usage: mc3000 [status|system|watch|start|stop]`);
         process.exitCode = 2;
     }
   } finally {

@@ -9,6 +9,8 @@ the hardware. Where a fact came from DataExplorer, the file and line are cited. 
 was copied. This project is AGPL-3.0-or-later; GPLv3 §13 permits the combination.
 
 Each claim below is marked **[verified]** (observed on hardware) or **[unverified]**.
+Hardware used: MC3000 **firmware 1.25, hardware 2.2** (verified 2026-07-08). Several LIVE
+fields are firmware-gated; facts here are from 1.25 unless noted.
 
 ## Transport
 
@@ -102,13 +104,36 @@ Offsets cross-checked against `MC3000.convertDataBytes()` and `MC3000.java:1608,
 | `8..9`   | voltage, mV | **[verified]** |
 | `10..11` | current, mA | **[verified]** |
 | `12..13` | capacity, mAh | **[verified]** |
-| `14..15` | temperature | reads `315` on a bench at room temperature; scale **[unverified]**, probably 0.1 °C |
-| `16..17` | resistance? | **[unverified]** |
-| `18..19` | — | **[unverified]** |
-| `20..21` | energy | firmware ≥ 1.05 **[unverified]** |
-| `22..23` | power | firmware ≥ 1.05 **[unverified]** |
-| `24`     | capacity decimal | firmware ≥ 1.11 **[unverified]** |
-| `25..26` | — | firmware ≥ 1.14 **[unverified]** |
+| `14..15` | temperature | `304` idle at room temp (≈30.4 °C), unchanged under brief load; **[verified present]**, 0.1 °C scale **[unverified]** (no reference thermometer). Earlier "315" reads were stale (undrained queue), not a different offset. |
+| `16..17` | resistance? | `0` idle, `22` under load; **[verified present]**, mΩ scale **[unverified]** |
+| `18..19` | — | reads `300`; **[unverified]** |
+| `20..21` | energy | firmware ≥ 1.05; `2` under load **[unverified]** |
+| `22..23` | **power, mW** | firmware ≥ 1.05; **[verified]** — read `3015` mW at 3.646 V × 826 mA (= 3.01 W). Exact match to U·I. |
+| `24`     | capacity decimal | firmware ≥ 1.11; `5` under load **[unverified]** |
+| `25..26` | — | firmware ≥ 1.14; `3634` under load **[unverified]** |
+
+Verified on firmware 1.25. Idle reads must drain the input queue first — an undrained
+read returns the previous report and produces plausible-but-wrong values (this is how the
+"315" temperature confusion arose).
+
+### SYSTEM reply (`0x5A`)
+
+A 16-byte machine-ID block sits at **offset 16** of the reply
+(`MC3000.java:113`, `machineId[i] = buffer[i+16]`), so its fields are at reply offsets
+`16+n`:
+
+| machineId offset | reply offset | Field | Notes |
+|--------|--------|-------|-------|
+| `0..5`   | `16..21` | machine id / serial, ASCII | e.g. `"100083"` **[verified present]** |
+| `11`     | `27`     | firmware major | **[verified]** — read `1` |
+| `12`     | `28`     | firmware minor | **[verified]** — read `0x19` = 25, i.e. firmware **1.25** |
+| `13`     | `29`     | hardware version | `hw = b/10 . b%10`; read `0x16` = 22 → **2.2** **[verified]** |
+
+The firmware version gates several LIVE fields (see above), so read SYSTEM first.
+
+Note: the SYSTEM reply does **not** pass the LIVE trailing-checksum rule (byte 63 is
+padding here); it carries its checksum differently — offset **[unverified]**, but the
+version and serial decode cleanly, so the reply itself is sound.
 
 ### SLOT_PROGRAM reply (`0x5F`)
 

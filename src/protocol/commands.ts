@@ -39,9 +39,17 @@ export interface Live {
   voltageMv: number;
   currentMa: number;
   capacityMah: number;
+  powerMw: number;
+  /** Raw temperature word. ≈0.1 °C (304 → 30.4 °C), scale not independently confirmed. */
+  temperatureRaw: number;
 }
 
-/** Offsets cross-checked against DataExplorer's MC3000.convertDataBytes(). */
+/**
+ * Offsets cross-checked against DataExplorer's MC3000.convertDataBytes() and
+ * verified against firmware 1.25. voltage/current/capacity/status and powerMw are
+ * verified; powerMw (firmware ≥ 1.05) read 3015 mW at 3.646 V × 826 mA.
+ * The caller must have drained the input queue — an undrained read is one report stale.
+ */
 export function parseLive(r: Uint8Array): Live {
   const statusRaw = r[5];
   return {
@@ -53,5 +61,24 @@ export function parseLive(r: Uint8Array): Live {
     voltageMv: be16(r, 8),
     currentMa: be16(r, 10),
     capacityMah: be16(r, 12),
+    temperatureRaw: be16(r, 14),
+    powerMw: be16(r, 22),
+  };
+}
+
+export interface System {
+  serial: string;
+  firmware: string;
+  hardware: string;
+}
+
+/** Machine-id block starts at offset 16 of the SYSTEM (0x5A) reply. Verified on fw 1.25. */
+export function parseSystem(r: Uint8Array): System {
+  const mid = r.subarray(16, 32);
+  const serial = String.fromCharCode(...mid.subarray(0, 6)).replace(/[^\x20-\x7e]/g, "");
+  return {
+    serial,
+    firmware: `${mid[11]}.${String(mid[12]).padStart(2, "0")}`,
+    hardware: `${Math.floor(mid[13] / 10)}.${mid[13] % 10}`,
   };
 }

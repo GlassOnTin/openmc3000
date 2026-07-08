@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { buildFrame, checkReply, be16, REPORT_SIZE } from "../src/protocol/frame.ts";
-import { readLive, readSlotProgram, readSystem, start, stop, parseLive } from "../src/protocol/commands.ts";
+import { readLive, readSlotProgram, readSystem, start, stop, parseLive, parseSystem } from "../src/protocol/commands.ts";
 
 const head = (f: Uint8Array, n: number) => Array.from(f.subarray(0, n));
 
@@ -45,4 +45,28 @@ test("parseLive decodes a real idle-slot reply", () => {
 
 test("be16 is big-endian", () => {
   assert.equal(be16(new Uint8Array([0x0e, 0x29]), 0), 3625);
+});
+
+test("parseLive extracts power on fw 1.25 (captured under load)", () => {
+  // Captured 2026-07-08 fw1.25: slot 1 charging, 3.646V/826mA, power 0x0bc7=3015mW.
+  const r = new Uint8Array(REPORT_SIZE);
+  r.set([0x55,0x00,0x00,0x00,0x00,0x01,0x00,0x06,0x0e,0x3e,0x03,0x3a,0x00,0x00,
+         0x01,0x30,0x00,0x16,0x01,0x2c,0x00,0x02,0x0b,0xc7], 0);
+  const l = parseLive(r);
+  assert.equal(l.voltageMv, 3646);
+  assert.equal(l.currentMa, 826);
+  assert.equal(l.status, "charge");
+  assert.equal(l.powerMw, 3015);              // == round(3.646 * 826)
+  assert.equal(l.temperatureRaw, 304);
+});
+
+test("parseSystem decodes firmware 1.25 SYSTEM reply", () => {
+  // Captured 2026-07-08 straight from the device.
+  const r = new Uint8Array(REPORT_SIZE);
+  r.set([0x5a,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0x00,0x01,0x00,0x00,0x01,0xf8,
+         0x31,0x30,0x30,0x30,0x38,0x33,0x01,0x00,0x00,0x00,0x00,0x01,0x19,0x16,0x00,0xa3], 0);
+  const s = parseSystem(r);
+  assert.equal(s.serial, "100083");
+  assert.equal(s.firmware, "1.25");
+  assert.equal(s.hardware, "2.2");
 });
