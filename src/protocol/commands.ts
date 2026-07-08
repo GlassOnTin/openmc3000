@@ -1,4 +1,4 @@
-import { buildFrame, be16 } from "./frame.ts";
+import { buildFrame, be16, REPORT_SIZE } from "./frame.ts";
 
 export const Cmd = {
   START: 0x05,        // begin the program loaded in each slot. No reply.
@@ -65,6 +65,46 @@ export function parseLive(r: Uint8Array): Live {
     powerMw: be16(r, 22),
   };
 }
+
+/**
+ * Build a SET_PROGRAM (0x11) frame that writes a slot's program back with optional
+ * field overrides. `readReply` is a 0x5F SLOT_PROGRAM reply for that slot; the write
+ * frame is a repack of it (the write layout differs from the read layout). Verified on
+ * firmware 1.25 by identity-write + single-field round-trip; layout from DataExplorer
+ * MC3000.java getBuffer() (firmware > 1.11 branch). NOT valid for firmware ≤ 1.11.
+ *
+ * Overrides are in the same units the device reports (mA, mV).
+ */
+export function buildSetProgram(
+  readReply: Uint8Array,
+  slot: number,
+  o: { chargeCurrentMa?: number; dischargeCurrentMa?: number } = {},
+): Uint8Array {
+  const rb = readReply;
+  const w = new Uint8Array(REPORT_SIZE);
+  w.set([0x0f, 0x20, 0x11, 0x00, slot, rb[3]]);
+  w[6] = rb[5]; w[7] = rb[6];        // capacity
+  w[8] = rb[4];                      // operation mode
+  w.set(rb.subarray(7, 21), 9);      // charge current .. charge resting (14 bytes)
+  w[23] = rb[31];                    // discharge resting time
+  w[24] = rb[21];                    // cycle mode
+  w[25] = rb[22];                    // peak sense voltage
+  w[26] = rb[23];                    // trickle current
+  w[27] = rb[30];                    // trickle time
+  w[28] = rb[26];                    // cut temperature
+  w[29] = rb[27]; w[30] = rb[28];    // cut time
+  w[31] = rb[24]; w[32] = rb[25];    // restart voltage
+  if (o.chargeCurrentMa !== undefined) { w[9] = o.chargeCurrentMa >> 8; w[10] = o.chargeCurrentMa & 0xff; }
+  if (o.dischargeCurrentMa !== undefined) { w[11] = o.dischargeCurrentMa >> 8; w[12] = o.dischargeCurrentMa & 0xff; }
+  let sum = 0;                       // checksum = sum(w[2..32]) inclusive
+  for (let i = 2; i <= 32; i++) sum += w[i];
+  w[33] = sum & 0xff;
+  w[34] = 0xff; w[35] = 0xff;
+  return w;
+}
+
+/** SET_PROGRAM acks with a report whose first byte is 0xF0. */
+export const isSetProgramAck = (r: Uint8Array): boolean => r[0] === 0xf0;
 
 export interface System {
   serial: string;

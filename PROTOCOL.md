@@ -154,19 +154,52 @@ mode, `[22]` peak sense voltage, `[23]` trickle current, `[24..25]` restart volt
 `[26]` cut temperature, `[27..28]` cut time, `[29]` temperature unit, `[30]` trickle time,
 `[31]` discharge resting time.
 
-Verified for slot 1 only: LiIon / Charge / 1000 mA / 500 mA / 3000 mV cut-off / 4200 mV
-end. The remaining fields are **[unverified]** and are taken from kolinger's decoder.
+Verified on fw 1.25 for slot 1: LiIon / Charge / 1000 mA charge / 500 mA discharge /
+3300 mV discharge cut-off / 4200 mV charge-end / 100 mA charge-end current. The remaining
+fields are **[unverified]** and are taken from kolinger's decoder.
 
-## Gaps worth capturing
+### SET_PROGRAM (`0x11`) — write a slot program
 
-These need a USB capture of SkyRC's Windows PC Link app driving the charger:
+**[verified on fw 1.25]** by direct probing: identity-write (repack a slot's own values
+and write them back) is acked and changes nothing; a single-field change round-trips.
 
-- SET_PROGRAM's exact 32-byte layout and its `0xF0` ack.
-- SYSTEM settings reply layout (firmware version lives here; several LIVE fields are
-  gated on it).
-- Temperature and resistance scaling.
-- Whether per-slot start/stop exists, or only the global `0x05`/`0xFE`.
-- The firmware-update path.
+The write frame is a **repack** of the `0x5F` read reply — its layout is *not* the read
+layout (from DataExplorer `MC3000.java` getBuffer(), firmware > 1.11 branch; a different,
+shorter layout applies to firmware ≤ 1.11):
+
+```
+[0]=0F [1]=20 (len) [2]=11 [3]=00
+[4]      slot
+[5]      battery type          (read [3])
+[6..7]   capacity              (read [5..6])
+[8]      operation mode        (read [4])
+[9..22]  14 bytes: charge current … charge resting time   (read [7..20])
+[23]     discharge resting time (read [31])
+[24]     cycle mode            (read [21])
+[25]     peak sense voltage    (read [22])
+[26]     trickle current       (read [23])
+[27]     trickle time          (read [30])
+[28]     cut temperature       (read [26])
+[29..30] cut time              (read [27..28])
+[31..32] restart voltage       (read [24..25])
+[33]     checksum = sum(frame[2..32]) & 0xFF   (ADD(buf,2,len), len inclusive)
+[34..35] FF FF
+```
+
+So within the write frame, charge current is at `[9..10]`, discharge current at `[11..12]`,
+both big-endian mA. The device replies with a report whose first byte is `0xF0` (ack); a
+missing or non-`0xF0` reply means the frame was rejected — read the slot back to confirm.
+Implemented in `buildSetProgram()`.
+
+## Gaps remaining
+
+- **Whether per-slot start/stop exists**, or only the global `0x05`/`0xFE`. DataExplorer
+  knows only the global commands, so discovering a per-slot opcode safely needs a USB
+  capture of SkyRC's Windows PC Link app driving one slot (observing the device's wire
+  protocol, not the app's code).
+- Temperature and resistance scaling (need a reference instrument, not just captures).
+- Remaining SLOT_PROGRAM / LIVE fields marked **[unverified]** above.
+- The firmware-update / bootloader path (command `0x88`) — out of scope for a control tool.
 
 ## Credits
 

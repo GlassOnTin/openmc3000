@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { buildFrame, checkReply, be16, REPORT_SIZE } from "../src/protocol/frame.ts";
-import { readLive, readSlotProgram, readSystem, start, stop, parseLive, parseSystem } from "../src/protocol/commands.ts";
+import { readLive, readSlotProgram, readSystem, start, stop, parseLive, parseSystem, buildSetProgram } from "../src/protocol/commands.ts";
 
 const head = (f: Uint8Array, n: number) => Array.from(f.subarray(0, n));
 
@@ -69,4 +69,29 @@ test("parseSystem decodes firmware 1.25 SYSTEM reply", () => {
   assert.equal(s.serial, "100083");
   assert.equal(s.firmware, "1.25");
   assert.equal(s.hardware, "2.2");
+});
+
+test("buildSetProgram repacks the read reply into the verified write frame (fw 1.25)", () => {
+  // Captured 2026-07-08: slot 1 SLOT_PROGRAM (0x5F) read reply and the identity
+  // write frame the device acked with 0xF0.
+  const read = new Uint8Array(REPORT_SIZE);
+  read.set([0x5f,0x00,0x00,0x00,0x00,0x00,0x00,0x03,0xe8,0x01,0xf4,0x0c,0xe4,0x10,0x68,0x00,
+            0x64,0x01,0xf4,0x01,0x00,0x00,0x03,0x03,0x00,0x00,0x2d,0x00,0xb4,0x00,0x00,0x00], 0);
+  const w = buildSetProgram(read, 0);
+  const expect = [0x0f,0x20,0x11,0x00,0x00,0x00,0x00,0x00,0x00,0x03,0xe8,0x01,0xf4,0x0c,0xe4,0x10,
+                  0x68,0x00,0x64,0x01,0xf4,0x01,0x00,0x00,0x00,0x03,0x03,0x00,0x2d,0x00,0xb4,0x00,
+                  0x00,0x9a,0xff,0xff];
+  assert.deepEqual(Array.from(w.subarray(0, 36)), expect);
+});
+
+test("buildSetProgram charge-current override changes only bytes 9,10 and checksum", () => {
+  const read = new Uint8Array(REPORT_SIZE);
+  read.set([0x5f,0x00,0x00,0x00,0x00,0x00,0x00,0x03,0xe8,0x01,0xf4,0x0c,0xe4,0x10,0x68,0x00,
+            0x64,0x01,0xf4,0x01,0x00,0x00,0x03,0x03,0x00,0x00,0x2d,0x00,0xb4,0x00,0x00,0x00], 0);
+  const base = buildSetProgram(read, 0);
+  const mod = buildSetProgram(read, 0, { chargeCurrentMa: 650 });
+  assert.equal((mod[9] << 8) | mod[10], 650);        // 0x028a
+  const diffs = [];
+  for (let i = 0; i < 36; i++) if (base[i] !== mod[i]) diffs.push(i);
+  assert.deepEqual(diffs, [9, 10, 33]);               // current hi/lo + checksum only
 });
