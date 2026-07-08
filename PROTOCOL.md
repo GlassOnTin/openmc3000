@@ -30,8 +30,12 @@ One interface, two 64-byte interrupt endpoints: `0x01 OUT`, `0x81 IN`. No report
 the report number is `0` on WebHID and hidraw writes carry no prefix byte. **[verified]**
 
 The HID report descriptor declares Usage Page `0x01` (Generic Desktop), Usage `0x00`
-(undefined) — not one of Chrome's protected usages, so WebHID should expose it. **[unverified:
-not yet tried in a browser]**
+(undefined) — not one of Chrome's protected usages. **[verified]** Chrome (Linux) exposes
+the device via WebHID: it appears in the `requestDevice` chooser as vid `0x0000` pid
+`0x0001`, one collection (usagePage `0x1`, usage `0x0`, 1 input + 1 output report),
+`device.open()` succeeds, and a `SYSTEM` read round-trips — `sendReport(0, <64 bytes>)`
+out, an `inputreport` event with `reportId 0` and a 64-byte `DataView` back. Filter with
+`{ vendorId: 0x0000, productId: 0x0001 }`. No report IDs, so `reportId` is `0` both ways.
 
 libusb is **not** required. DataExplorer claims the interface via usbfs, but plain
 `/dev/hidraw*` reads and writes work identically. **[verified]**
