@@ -73,9 +73,8 @@ Multi-byte integers are big-endian throughout. **[verified]**
 | `0x5F` | SLOT_PROGRAM   | `0F 04 5F 00 <slot> <ck> FF FF` | slot program |
 | `0xFE` | STOP           | `0F 03 FE 00 FE FF FF`       | none  |
 
-`slot` is 0-based. START/STOP are **[verified]**; SET_PROGRAM's 32-byte layout is
-**[unverified]** — taken from DataExplorer `MC3000UsbPort.java:290` and kolinger's
-`mc3000usb.py`, never exercised here.
+`slot` is 0-based for the per-slot commands (`0x55`, `0x5F`, `0x11`). START and STOP take
+**no slot** — they are global (see below). All six commands above are **[verified]**.
 
 ### START / STOP
 
@@ -98,6 +97,15 @@ STOP →  status=0  3.643V     0mA
 ```
 
 The ramp takes ~7 s, so a poll sooner than that will read a misleadingly low current.
+
+**START/STOP are global — there is no per-slot start over USB. [verified]** Confirmed
+three ways: (1) the frames carry no slot field (byte 3 is a fixed `00`, byte 4 the
+checksum), unlike `0x55`/`0x5F`/`0x11`; (2) a USB capture of SkyRC's PC Link driving the
+charger showed a per-slot start action and a start-all action emit the *identical*
+`0F 03 05 00 05`; (3) PC Link V1.06 offers only a global Start button — its per-slot
+"checkboxes" are chart-curve display toggles, not slot control. To run a subset of slots,
+program the unwanted slots off (or leave them empty) and issue the global START; the
+charger runs whatever occupied slots are programmed to run.
 
 ### LIVE reply (`0x55`)
 
@@ -193,10 +201,6 @@ Implemented in `buildSetProgram()`.
 
 ## Gaps remaining
 
-- **Whether per-slot start/stop exists**, or only the global `0x05`/`0xFE`. DataExplorer
-  knows only the global commands, so discovering a per-slot opcode safely needs a USB
-  capture of SkyRC's Windows PC Link app driving one slot (observing the device's wire
-  protocol, not the app's code).
 - Temperature and resistance scaling (need a reference instrument, not just captures).
 - Remaining SLOT_PROGRAM / LIVE fields marked **[unverified]** above.
 - The firmware-update / bootloader path (command `0x88`) — out of scope for a control tool.
