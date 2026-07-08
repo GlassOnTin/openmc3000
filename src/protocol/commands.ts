@@ -39,6 +39,8 @@ export interface Live {
   voltageMv: number;
   currentMa: number;
   capacityMah: number;
+  /** Bytes 22-23. Matches U·I while charging/discharging; in standby it reads a stale
+   *  non-zero value (meaning unknown). Trust only when statusRaw is 1 or 2. */
   powerMw: number;
   /** Raw temperature word. ≈0.1 °C (304 → 30.4 °C), scale not independently confirmed. */
   temperatureRaw: number;

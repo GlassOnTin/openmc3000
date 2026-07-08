@@ -1,0 +1,17 @@
+{
+  "name": "openmc3000-web",
+  "private": true,
+  "type": "module",
+  "description": "WebHID browser control app for the SkyRC MC3000 (reuses the ../src protocol codec)",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@types/w3c-web-hid": "^1.0.7",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
+  }
+}

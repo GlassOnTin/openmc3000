@@ -3,10 +3,16 @@
 Open-source control software for the **SkyRC MC3000** charger/analyzer (a 4-slot
 charger that ships with Windows-only PC Link software).
 
-## Status — protocol codec + Linux CLI, verified on hardware.
+## Status — protocol codec, Linux CLI, and a WebHID browser app, verified on hardware.
 
 The device is a USB-HID device (`0000:0001`) using 64-byte interrupt reports; see
 [`PROTOCOL.md`](PROTOCOL.md), which marks every claim as verified or unverified.
+
+Two front-ends share one codec (`src/protocol`, `src/transport`):
+- **`src/cli.ts`** — Node CLI over `/dev/hidraw` (`status`, `system`, `watch`, `start`, `stop`).
+- **[`web/`](web/)** — zero-install WebHID app for desktop Chrome/Edge: connect, live per-slot
+  telemetry, global start/stop. Verified in Chrome — enumeration, `SYSTEM` readback and live
+  polling confirmed on hardware; start/stop send the same frames the CLI verified.
 
 **It can start and stop a charge.** GNU DataExplorer — the only existing cross-platform
 MC3000 tool — declares the `START`/`STOP` opcodes but leaves the calls commented out, so

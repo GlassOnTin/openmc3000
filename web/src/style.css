@@ -1,0 +1,14 @@
+:root { color-scheme: light dark; }
+body { font: 15px/1.5 system-ui, sans-serif; margin: 2rem auto; max-width: 46rem; padding: 0 1rem; }
+h1 { margin: 0 0 .25rem; }
+.dev { color: #888; font-size: .9rem; margin-top: 0; }
+.controls { display: flex; gap: .5rem; margin: 1rem 0; }
+button { font-size: 1rem; padding: .55rem 1.1rem; cursor: pointer; border-radius: .4rem; border: 1px solid #888; background: Canvas; }
+button:hover { border-color: #38bdf8; }
+table { width: 100%; border-collapse: collapse; }
+td, th { padding: .4rem .5rem; text-align: right; border-bottom: 1px solid #8884; }
+tbody th { text-align: left; }
+tr.charging { background: color-mix(in srgb, #38bdf8 18%, transparent); }
+.empty { color: #999; text-align: center; }
+.note { color: #888; font-size: .85rem; }
+.err { color: #e11; }
