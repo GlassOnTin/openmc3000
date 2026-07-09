@@ -85,6 +85,7 @@ doesn't appear.
 - `src/transport/` — the byte-level seam: `hidraw.ts` (Node) and `webhid.ts` (browser).
 - `src/cli.ts` — `status`, `system`, `watch`, `start`, `stop`.
 - `web/` — the WebHID app (`npm run dev` / `build`); Pages workflow in `.github/workflows`.
+- [`bridge/`](bridge/) — MQTT / Home Assistant bridge (headless telemetry publisher).
 - `test/` — `npm test` (node's built-in runner, no framework).
 
 ## Safety

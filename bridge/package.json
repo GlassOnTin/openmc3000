@@ -1,0 +1,14 @@
+{
+  "name": "openmc3000-bridge",
+  "private": true,
+  "type": "module",
+  "description": "MQTT / Home Assistant bridge for the SkyRC MC3000 (over USB-HID)",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "start": "node --experimental-strip-types bridge.ts",
+    "dry-run": "node --experimental-strip-types bridge.ts"
+  },
+  "dependencies": {
+    "mqtt": "^5.10.0"
+  }
+}

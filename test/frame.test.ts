@@ -112,3 +112,24 @@ test("parseSlotProgram decodes the captured slot-1 program (fw 1.25)", () => {
   assert.equal(p.dischargeCutMv, 3300);       // 0x0ce4
   assert.equal(p.chargeEndMv, 4200);          // 0x1068
 });
+
+test("bridge payload: stateJson + HA discovery from a captured LIVE frame", async () => {
+  const { METRICS, stateJson, discoveryConfig } = await import("../bridge/payload.ts");
+  // captured under-load: charge, 3.646V, 826mA, 30.4C, 22mΩ
+  const r = new Uint8Array(REPORT_SIZE);
+  r.set([0x55,0x00,0x00,0x00,0x00,0x01,0x00,0x06,0x0e,0x3e,0x03,0x3a,0x00,0x00,
+         0x01,0x30,0x00,0x16,0x01,0x2c,0x00,0x02,0x0b,0xc7], 0);
+  const s = stateJson(parseLive(r));
+  assert.equal(s.voltage, "3.646");
+  assert.equal(s.current, "0.826");
+  assert.equal(s.power, "3.01");          // V·I, not the device's stale power field
+  assert.equal(s.temperature, "30.4");
+  assert.equal(s.resistance, 22);
+  assert.equal(s.status, "charge");
+  const dev = { identifiers: ["mc3000_100083"], name: "SkyRC MC3000", manufacturer: "SkyRC", model: "MC3000", sw_version: "1.25" };
+  const cfg = discoveryConfig(METRICS[0], 1, "mc3000_100083", "mc3000/100083", "mc3000/100083/status", dev);
+  assert.equal(cfg.state_topic, "mc3000/100083/slot1");
+  assert.equal(cfg.value_template, "{{ value_json.voltage }}");
+  assert.equal(cfg.device_class, "voltage");
+  assert.equal(cfg.unit_of_measurement, "V");
+});
