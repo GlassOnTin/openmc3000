@@ -212,22 +212,20 @@ function estimateEta(hist: Sample[], l: Live, prog: SlotProgram | null): string 
   return null;
 }
 
+// Only DERIVED / session metrics — the live V/I/cap/power/temp snapshot lives in the
+// table above, so we deliberately don't repeat it here.
 function analyze(hist: Sample[], l: Live, prog: SlotProgram | null): { k: string; v: string }[] {
   const rows: { k: string; v: string }[] = [];
   const running = l.statusRaw === 1 || l.statusRaw === 2;
   const nominal = prog?.capacityMah ?? 0;
   if (hist.length >= 2) rows.push({ k: "Elapsed", v: fmtDur((hist[hist.length - 1].ts - hist[0].ts) / 1000) });
-  rows.push({
-    k: l.statusRaw === 2 ? "Removed" : "Delivered",
-    v: `${l.capacityMah} mAh${nominal > 0 ? ` · ${(l.capacityMah / nominal * 100).toFixed(0)}% of ${nominal}` : ""}`,
-  });
+  if (nominal > 0) rows.push({ k: l.statusRaw === 2 ? "Removed vs rated" : "Charged vs rated", v: `${(l.capacityMah / nominal * 100).toFixed(0)}% of ${nominal} mAh` });
   rows.push({ k: "Energy", v: `${(l.energyMwh / 1000).toFixed(2)} Wh` });
-  if (running) rows.push({ k: "Power", v: `${(l.powerMw / 1000).toFixed(2)} W` });
   if (l.resistanceMOhm > 0) rows.push({ k: "Internal resistance", v: `${l.resistanceMOhm} mΩ` });
   if (nominal > 0 && running) rows.push({ k: "C-rate", v: `${(l.currentMa / nominal).toFixed(2)}C` });
   if (hist.length >= 2) {
     const dT = (l.temperatureRaw - hist[0].t) / 10;
-    rows.push({ k: "Temperature", v: `${(l.temperatureRaw / 10).toFixed(1)} °C${Math.abs(dT) >= 0.1 ? ` (Δ${dT >= 0 ? "+" : ""}${dT.toFixed(1)})` : ""}` });
+    if (Math.abs(dT) >= 0.1) rows.push({ k: "Temp rise", v: `${dT >= 0 ? "+" : ""}${dT.toFixed(1)} °C` });
     const avgI = Math.round(hist.reduce((a, s) => a + s.i, 0) / hist.length);
     rows.push({ k: "Avg / peak current", v: `${avgI} / ${Math.max(...hist.map((s) => s.i))} mA` });
     rows.push({ k: "Peak voltage", v: `${(Math.max(...hist.map((s) => s.v)) / 1000).toFixed(3)} V` });
