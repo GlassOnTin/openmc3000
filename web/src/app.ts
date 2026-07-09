@@ -2,7 +2,7 @@ import "./style.css";
 import {
   BATTERY_TYPES, buildSetProgram, isSetProgramAck, parseLive, parseSlotProgram, parseSystem,
   readLive, readSlotProgram, readSystem, start, stop,
-  type Live, type ProgramEdits, type SlotProgram,
+  type Live, type ProgramEdits, type SlotProgram, type System,
 } from "../../src/protocol/commands.ts";
 import { checkReply } from "../../src/protocol/frame.ts";
 import { request, type Transport } from "../../src/transport/transport.ts";
@@ -510,15 +510,18 @@ async function connect() {
     renderDisconnected("charger disconnected — unplugged or powered off");
   });
   const sys = parseSystem(await withLock(() => request(t, readSystem())));
-  renderConnected(t.productName, sys.serial, sys.firmware, sys.hardware);
+  renderConnected(t.productName, sys);
   await loadPrograms();                  // targets/chemistry for the voltage chart bands
   startPolling();
 }
 
-function renderConnected(name: string, serial: string, fw: string, hw: string) {
+function renderConnected(name: string, sys: System) {
+  const settings = `beep ${sys.beepOn ? "on" : "off"} · ${sys.tempUnit === "F" ? "°F" : "°C"}`
+    + (sys.hiddenChem.length ? ` · hidden: ${sys.hiddenChem.join(", ")}` : "");
   h(`
     <h1>openMC3000</h1>
-    <p class="dev">${name} · serial ${serial} · firmware ${fw} · hardware ${hw}</p>
+    <p class="dev">${name} · serial ${sys.serial} · firmware ${sys.firmware} · hardware ${sys.hardware}</p>
+    <p class="dev">Device settings (read-only, change on the charger): ${settings}</p>
     <div class="controls">
       <button id="start">▶ Start (all)</button>
       <button id="stop">■ Stop (all)</button>

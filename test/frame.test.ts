@@ -69,6 +69,9 @@ test("parseSystem decodes firmware 1.25 SYSTEM reply", () => {
   assert.equal(s.serial, "100083");
   assert.equal(s.firmware, "1.25");
   assert.equal(s.hardware, "2.2");
+  assert.equal(s.beepOn, true);          // byte 9 = 0x01
+  assert.equal(s.tempUnit, "C");         // byte 8 = 0x00
+  assert.deepEqual(s.hiddenChem, ["LiIo4.35"]);  // byte 11 = 0x01
 });
 
 test("buildSetProgram repacks the read reply into the verified write frame (fw 1.25)", () => {

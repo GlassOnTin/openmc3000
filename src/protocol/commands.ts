@@ -132,6 +132,13 @@ export interface System {
   serial: string;
   firmware: string;
   hardware: string;
+  /** Device settings (read-only — no known write command). Offsets from DataExplorer
+   *  SystemSettings (MC3000.java:96-118). */
+  beepOn: boolean;        // byte 9 (beep tone; 0 = off)
+  tempUnit: "C" | "F";    // byte 8
+  uiMode: number;         // byte 7
+  lcdOffRaw: number;      // byte 14 (menu index; units uncertain)
+  hiddenChem: string[];   // bytes 10-13, 32 — chemistries hidden in the front-panel menu
 }
 
 export interface SlotProgram {
@@ -167,13 +174,25 @@ export function parseSlotProgram(r: Uint8Array): SlotProgram {
   };
 }
 
-/** Machine-id block starts at offset 16 of the SYSTEM (0x5A) reply. Verified on fw 1.25. */
+/** Decode the SYSTEM (0x5A) reply — machine-id block at offset 16, settings below it.
+ *  Verified on fw 1.25. Settings are read-only (no known write command). */
 export function parseSystem(r: Uint8Array): System {
   const mid = r.subarray(16, 32);
   const serial = String.fromCharCode(...mid.subarray(0, 6)).replace(/[^\x20-\x7e]/g, "");
+  const hidden: string[] = [];
+  if (r[10] === 1) hidden.push("LiFe");
+  if (r[11] === 1) hidden.push("LiIo4.35");
+  if (r[12] === 1) hidden.push("Eneloop");
+  if (r[13] === 1) hidden.push("NiZn");
+  if (r[32] === 1) hidden.push("RAM");
   return {
     serial,
     firmware: `${mid[11]}.${String(mid[12]).padStart(2, "0")}`,
     hardware: `${Math.floor(mid[13] / 10)}.${mid[13] % 10}`,
+    beepOn: r[9] !== 0,
+    tempUnit: r[8] === 1 ? "F" : "C",
+    uiMode: r[7],
+    lcdOffRaw: r[14],
+    hiddenChem: hidden,
   };
 }

@@ -152,6 +152,22 @@ A 16-byte machine-ID block sits at **offset 16** of the reply
 
 The firmware version gates several LIVE fields (see above), so read SYSTEM first.
 
+The same reply also carries the device settings (from DataExplorer `MC3000.java:96-118`),
+which are **read-only** — no write command for them is known (DataExplorer never writes
+system settings; PC-Link's UI didn't expose them):
+
+| Byte | Field | Notes |
+|------|-------|-------|
+| `2`  | current slot | |
+| `3..6` | slot 1–4 program number | |
+| `7`  | UI mode | |
+| `8`  | temperature unit | `0`=°C, `1`=°F **[verified: read 0]** |
+| `9`  | **beep tone** | `0`=off, else on **[verified: read 1]** |
+| `10..13` | hide LiFe / LiIo4.35 / Eneloop / NiZn | `1`=hidden in the front-panel menu **[verified: byte 11=1]** |
+| `14` | LCD-off time | menu index, units unconfirmed |
+| `15` | min input voltage | scale unconfirmed (read `248`) |
+| `32` | hide RAM | |
+
 Note: the SYSTEM reply does **not** pass the LIVE trailing-checksum rule (byte 63 is
 padding here); it carries its checksum differently — offset **[unverified]**, but the
 version and serial decode cleanly, so the reply itself is sound.
