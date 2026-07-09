@@ -61,7 +61,7 @@ function setStatus(msg: string) {
 // --- live charts ----------------------------------------------------------
 // 4 per-slot small multiples, all showing ONE measure at a time (single axis
 // each — never a dual voltage/current axis). Selector switches all four.
-type Sample = { v: number; i: number; cap: number; t: number };
+type Sample = { v: number; i: number; cap: number; t: number; ts: number };  // t = temp raw, ts = epoch ms
 type Measure = "v" | "i" | "cap" | "t";
 const MEASURES: Record<Measure, { label: string; unit: string; pick: (s: Sample) => number; fmt: (n: number) => string; zeroBased: boolean }> = {
   v:   { label: "Voltage", unit: "V",   pick: (s) => s.v / 1000, fmt: (n) => n.toFixed(2), zeroBased: false },
@@ -83,7 +83,8 @@ const CHEM: Record<string, { min: number; max: number }> = {
   NiZn: { min: 1.2, max: 1.9 }, RAM: { min: 0.9, max: 1.65 },
 };
 
-const W = 300, H = 120, padL = 42, padR = 10, padT = 10, padB = 18;
+const W = 320, H = 140, padL = 44, padR = 12, padT = 10, padB = 26;
+const fmtDur = (s: number) => s < 60 ? `${Math.round(s)}s` : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
 
 function chartSvg(slot: number, samples: Sample[], prog: SlotProgram | null): string {
   const m = MEASURES[measure];
@@ -110,7 +111,9 @@ function chartSvg(slot: number, samples: Sample[], prog: SlotProgram | null): st
     hi += pad;
   }
 
-  const x = (i: number) => padL + (i / (samples.length - 1)) * (W - padL - padR);
+  // x maps by actual time so gaps (skipped/errored polls) don't distort the curve.
+  const t0 = samples[0].ts, span = Math.max(1, samples[samples.length - 1].ts - t0);
+  const x = (i: number) => padL + ((samples[i].ts - t0) / span) * (W - padL - padR);
   const y = (val: number) => padT + (1 - (val - lo) / (hi - lo)) * (H - padT - padB);
   const plotW = W - padL - padR;
   const band = (vTop: number, vBot: number, cls: string) => {
@@ -143,6 +146,8 @@ function chartSvg(slot: number, samples: Sample[], prog: SlotProgram | null): st
       <line class="c-axis" x1="${padL}" y1="${H - padB}" x2="${W - padR}" y2="${H - padB}"/>
       <text class="c-tick" x="${padL - 4}" y="${padT + 4}" text-anchor="end">${m.fmt(hi)}</text>
       <text class="c-tick" x="${padL - 4}" y="${H - padB}" text-anchor="end">${m.fmt(lo)}</text>
+      <text class="c-tick" x="${padL}" y="${H - 6}" text-anchor="start">-${fmtDur(span / 1000)}</text>
+      <text class="c-tick" x="${W - padR}" y="${H - 6}" text-anchor="end">now</text>
       ${refs}
       <polyline class="c-line" points="${pts}"/>
     </svg></figure>`;
@@ -151,7 +156,12 @@ function chartSvg(slot: number, samples: Sample[], prog: SlotProgram | null): st
 function renderCharts() {
   const el = document.getElementById("charts");
   if (!el) return;
-  el.innerHTML = history.map((s, slot) => chartSvg(slot, s, programs[slot])).join("");
+  // Only chart slots that have data — empty slots never accumulate samples, so
+  // don't reserve dead "collecting…" tiles for them.
+  const active = history.map((s, slot) => [slot, s] as const).filter(([, s]) => s.length > 0);
+  el.innerHTML = active.length
+    ? active.map(([slot, s]) => chartSvg(slot, s, programs[slot])).join("")
+    : `<p class="dev">Charts appear once a slot has a cell and live readings.</p>`;
 }
 
 async function loadPrograms() {
@@ -231,7 +241,7 @@ async function refresh() {
         const present = l.voltageMv > 0 || l.statusRaw !== 0;
         if (present) {
           const buf = history[s];
-          buf.push({ v: l.voltageMv, i: l.currentMa, cap: l.capacityMah, t: l.temperatureRaw });
+          buf.push({ v: l.voltageMv, i: l.currentMa, cap: l.capacityMah, t: l.temperatureRaw, ts: Date.now() });
           if (buf.length > HISTORY_MAX) buf.shift();
         }
       } catch {
