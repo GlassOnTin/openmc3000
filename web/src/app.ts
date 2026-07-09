@@ -163,16 +163,70 @@ async function loadPrograms() {
   }
 }
 
+// --- session recording + CSV export ---------------------------------------
+type RecRow = { t: number; lives: (Live | null)[] };
+const REC_MAX = 86400;                 // ~24 h at 1 Hz — safety cap
+let recRows: RecRow[] = [];
+let recStart = 0;
+let recording = false;
+
+function toggleRecord() {
+  if (recording) recording = false;
+  else { recording = true; recRows = []; recStart = Date.now(); }
+  updateRecUi();
+}
+
+function updateRecUi() {
+  const btn = document.getElementById("rec-toggle") as HTMLButtonElement | null;
+  const dl = document.getElementById("rec-dl") as HTMLButtonElement | null;
+  const st = document.getElementById("rec-status");
+  if (!btn || !dl || !st) return;
+  btn.textContent = recording ? "■ Stop recording" : "● Record";
+  btn.classList.toggle("rec-on", recording);
+  dl.disabled = recRows.length === 0;
+  st.textContent = recRows.length
+    ? `${recRows.length} sample${recRows.length === 1 ? "" : "s"}${recording ? " — recording…" : " recorded"}`
+    : "";
+}
+
+function buildCsv(): string {
+  const cols = ["time_iso", "elapsed_s"];
+  for (let s = 1; s <= 4; s++) cols.push(`s${s}_status`, `s${s}_V`, `s${s}_mA`, `s${s}_mAh`, `s${s}_degC`);
+  const lines = [cols.join(",")];
+  for (const r of recRows) {
+    const cells = [new Date(r.t).toISOString(), ((r.t - recStart) / 1000).toFixed(1)];
+    for (const l of r.lives) {
+      if (l) cells.push(l.status, (l.voltageMv / 1000).toFixed(3), String(l.currentMa), String(l.capacityMah), (l.temperatureRaw / 10).toFixed(1));
+      else cells.push("", "", "", "", "");
+    }
+    lines.push(cells.join(","));
+  }
+  return lines.join("\n");
+}
+
+function downloadCsv() {
+  if (!recRows.length) return;
+  const blob = new Blob([buildCsv()], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `mc3000-${new Date(recStart).toISOString().replace(/[:.]/g, "-").slice(0, 19)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 let polling = false;   // guard against overlapping refreshes stacking up
 async function refresh() {
   if (polling || !transport) return;
   polling = true;
   try {
     const rows = [];
+    const lives: (Live | null)[] = [null, null, null, null];
     let errs = 0;
     for (let s = 0; s < 4; s++) {
       try {
         const l = await liveRetry(s);
+        lives[s] = l;
         rows.push(slotRow(l));
         const present = l.voltageMv > 0 || l.statusRaw !== 0;
         if (present) {
@@ -188,6 +242,7 @@ async function refresh() {
     const el = document.getElementById("slots");
     if (el) el.innerHTML = rows.join("");
     renderCharts();
+    if (recording && recRows.length < REC_MAX) { recRows.push({ t: Date.now(), lives }); updateRecUi(); }
     // A transient read error is NOT a disconnect — keep polling. Real removal
     // arrives via the WebHID 'disconnect' event (see connect()).
     setStatus(errs ? `${errs}/4 slots failed this poll — retrying` : "");
@@ -384,6 +439,11 @@ function renderConnected(name: string, serial: string, fw: string, hw: string) {
           <option value="t">Temperature (°C)</option>
         </select>
       </label>
+      <span class="rec">
+        <button id="rec-toggle">● Record</button>
+        <button id="rec-dl" disabled>⭳ Download CSV</button>
+        <span id="rec-status" class="dev"></span>
+      </span>
     </div>
     <div id="charts" class="charts"></div>
     <p class="note">Start/Stop are global — the MC3000 has no per-slot start over USB/BLE.
@@ -394,6 +454,9 @@ function renderConnected(name: string, serial: string, fw: string, hw: string) {
   const sel = document.getElementById("measure") as HTMLSelectElement;
   sel.value = measure;
   sel.addEventListener("change", () => { measure = sel.value as Measure; renderCharts(); });
+  document.getElementById("rec-toggle")!.addEventListener("click", toggleRecord);
+  document.getElementById("rec-dl")!.addEventListener("click", downloadCsv);
+  updateRecUi();   // reflect any in-progress recording after a re-render
   // delegated: slot rows (hence edit buttons) are regenerated every poll
   document.getElementById("slots")!.addEventListener("click", (e) => {
     const btn = (e.target as HTMLElement).closest(".edit") as HTMLButtonElement | null;
