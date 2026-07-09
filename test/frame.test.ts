@@ -133,3 +133,17 @@ test("bridge payload: stateJson + HA discovery from a captured LIVE frame", asyn
   assert.equal(cfg.device_class, "voltage");
   assert.equal(cfg.unit_of_measurement, "V");
 });
+
+test("bridge control: switch + number discovery configs", async () => {
+  const { switchConfig, numberConfig } = await import("../bridge/payload.ts");
+  const dev = { identifiers: ["mc3000_100083"], name: "SkyRC MC3000", manufacturer: "SkyRC", model: "MC3000", sw_version: "1.25" };
+  const sw = switchConfig("mc3000_100083", "mc3000/100083", "mc3000/100083/status", dev);
+  assert.equal(sw.command_topic, "mc3000/100083/cmd/run");
+  assert.equal(sw.state_topic, "mc3000/100083/run");
+  assert.equal(sw.payload_on, "ON");
+  const num = numberConfig(4, "mc3000_100083", "mc3000/100083", "mc3000/100083/status", dev);
+  assert.equal(num.command_topic, "mc3000/100083/cmd/slot4/charge_current");
+  assert.equal(num.state_topic, "mc3000/100083/set/slot4/charge_current");
+  assert.equal(num.max, 3000);
+  assert.equal(num.unit_of_measurement, "mA");
+});

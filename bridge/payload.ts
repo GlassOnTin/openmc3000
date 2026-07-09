@@ -40,3 +40,27 @@ export function stateJson(l: Live): Record<string, string | number> {
   for (const m of METRICS) s[m.key] = m.val(l);
   return s;
 }
+
+// --- control entities (bidirectional) -------------------------------------
+export const CHARGE_MAX_MA = 3000;
+
+/** HA switch: on → START (all occupied slots), off → STOP (all). Global — the MC3000
+ *  has no per-slot start. State is "ON" while any slot is charging/discharging. */
+export function switchConfig(id: string, base: string, availTopic: string, device: Device): Record<string, unknown> {
+  return {
+    name: "Charging", unique_id: `${id}_run`, icon: "mdi:battery-charging",
+    command_topic: `${base}/cmd/run`, state_topic: `${base}/run`,
+    payload_on: "ON", payload_off: "OFF",
+    availability_topic: availTopic, device,
+  };
+}
+
+/** HA number: set a slot's charge current (mA) via SET_PROGRAM. */
+export function numberConfig(slot: number, id: string, base: string, availTopic: string, device: Device): Record<string, unknown> {
+  return {
+    name: `Slot ${slot} charge current`, unique_id: `${id}_s${slot}_charge_current`,
+    command_topic: `${base}/cmd/slot${slot}/charge_current`, state_topic: `${base}/set/slot${slot}/charge_current`,
+    min: 0, max: CHARGE_MAX_MA, step: 50, unit_of_measurement: "mA", mode: "box", icon: "mdi:current-dc",
+    availability_topic: availTopic, device,
+  };
+}
