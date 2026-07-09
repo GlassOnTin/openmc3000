@@ -126,9 +126,9 @@ Offsets cross-checked against `MC3000.convertDataBytes()` and `MC3000.java:1608,
 | `10..11` | current, mA | **[verified]** |
 | `12..13` | capacity, mAh | **[verified]** |
 | `14..15` | temperature, 0.1 °C | **[verified]** as temperature: while one slot charged at 2 A it read `290` (29.0 °C) vs empty slots `277`–`284` (27.7–28.4 °C) — the active slot runs warmer, and values are only physically sensible as 0.1 °C (as °F or whole-°C they're absurd). Absolute scale not checked against a reference thermometer, and may follow the device's °C/°F unit setting. |
-| `16..17` | resistance? | `0` idle, `22` under load; **[verified present]**, mΩ scale **[unverified]** |
-| `18..19` | — | reads `300`; **[unverified]** |
-| `20..21` | energy | firmware ≥ 1.05; `2` under load **[unverified]** |
+| `16..17` | internal resistance, mΩ | **[verified]** — `0` at idle, stable `22` mΩ while charging a 21700 (physically sensible for that cell). Device-measured. |
+| `18..19` | — | reads `300`/`335`; **[unverified]** |
+| `20..21` | energy, mWh | firmware ≥ 1.05; **[verified]** — `7516` mWh at 1811 mAh delivered (≈ ∫V·I at ~4.1 V avg). Increments over the session. |
 | `22..23` | **power, mW (while running)** | firmware ≥ 1.05. **[verified under load]** — `3015` mW at 3.646 V × 826 mA (= 3.01 W), exact U·I match. **But in standby it reads non-zero/stale (e.g. `3237` at 0 mA) — meaning there is unknown.** Trust only when status is charge/discharge. |
 | `24`     | capacity decimal | firmware ≥ 1.11; `5` under load **[unverified]** |
 | `25..26` | — | firmware ≥ 1.14; `3634` under load **[unverified]** |

@@ -72,6 +72,7 @@ const MEASURES: Record<Measure, { label: string; unit: string; pick: (s: Sample)
 const HISTORY_MAX = 600;                       // ~10 min at 1 Hz
 const history: Sample[][] = [[], [], [], []];
 const programs: (SlotProgram | null)[] = [null, null, null, null];
+const latest: (Live | null)[] = [null, null, null, null];
 let measure: Measure = "v";
 
 // Per-cell absolute safe voltage window by chemistry (volts). Sets the voltage
@@ -164,6 +165,94 @@ function renderCharts() {
     : `<p class="dev">Charts appear once a slot has a cell and live readings.</p>`;
 }
 
+// --- charge/discharge modelling -------------------------------------------
+const isNi = (type: string) => ["NiMH", "NiCd", "Eneloop"].includes(type);
+
+/** Human-readable state of the cell, covering charge sub-phases and discharge. */
+function phaseWord(l: Live, prog: SlotProgram | null): string {
+  const s = l.statusRaw;
+  if (s >= 0x80) return `Error 0x${s.toString(16)}`;
+  if (s === 0) return "Idle";
+  if (s === 3) return "Resting";
+  if (s === 4) return "Done";
+  if (s === 2) return prog && l.voltageMv <= prog.dischargeCutMv + 50 ? "Discharging · near cut-off" : "Discharging";
+  if (s === 1) {
+    if (!prog) return "Charging";
+    if (isNi(l.batteryType)) return "Charging (CC, −ΔV term)";
+    const termI = Math.max(prog.chargeEndCurrentMa, 20);
+    if (l.voltageMv >= prog.chargeEndMv - 20)
+      return l.currentMa <= termI * 1.5 ? "Absorption · topping off" : "Absorption (CV)";
+    return "Bulk (CC)";
+  }
+  return "—";
+}
+
+/** Rough time-remaining estimate. CV: extrapolate exponential current decay to the
+ *  termination current. Discharge: linear voltage slope to the cut-off. Marked "~". */
+function estimateEta(hist: Sample[], l: Live, prog: SlotProgram | null): string | null {
+  if (!prog || hist.length < 8) return null;
+  const win = hist.slice(-8);
+  const dt = (win[win.length - 1].ts - win[0].ts) / 1000;
+  if (dt <= 0) return null;
+  if (l.statusRaw === 1 && l.voltageMv >= prog.chargeEndMv - 20) {   // CV
+    const termI = Math.max(prog.chargeEndCurrentMa, 20);
+    const i0 = win[0].i, i1 = win[win.length - 1].i;
+    if (i1 < i0 && i1 > 0 && l.currentMa > termI) {
+      const tau = -dt / Math.log(i1 / i0);
+      const secs = tau * Math.log(l.currentMa / termI);
+      if (secs > 0 && secs < 86400) return `~${fmtDur(secs)} to termination`;
+    }
+  } else if (l.statusRaw === 2) {                                    // discharge
+    const v0 = win[0].v, v1 = win[win.length - 1].v;
+    if (v1 < v0) {
+      const secs = (prog.dischargeCutMv - l.voltageMv) / ((v1 - v0) / dt);
+      if (secs > 0 && secs < 86400) return `~${fmtDur(secs)} to cut-off`;
+    }
+  }
+  return null;
+}
+
+function analyze(hist: Sample[], l: Live, prog: SlotProgram | null): { k: string; v: string }[] {
+  const rows: { k: string; v: string }[] = [];
+  const running = l.statusRaw === 1 || l.statusRaw === 2;
+  const nominal = prog?.capacityMah ?? 0;
+  if (hist.length >= 2) rows.push({ k: "Elapsed", v: fmtDur((hist[hist.length - 1].ts - hist[0].ts) / 1000) });
+  rows.push({
+    k: l.statusRaw === 2 ? "Removed" : "Delivered",
+    v: `${l.capacityMah} mAh${nominal > 0 ? ` · ${(l.capacityMah / nominal * 100).toFixed(0)}% of ${nominal}` : ""}`,
+  });
+  rows.push({ k: "Energy", v: `${(l.energyMwh / 1000).toFixed(2)} Wh` });
+  if (running) rows.push({ k: "Power", v: `${(l.powerMw / 1000).toFixed(2)} W` });
+  if (l.resistanceMOhm > 0) rows.push({ k: "Internal resistance", v: `${l.resistanceMOhm} mΩ` });
+  if (nominal > 0 && running) rows.push({ k: "C-rate", v: `${(l.currentMa / nominal).toFixed(2)}C` });
+  if (hist.length >= 2) {
+    const dT = (l.temperatureRaw - hist[0].t) / 10;
+    rows.push({ k: "Temperature", v: `${(l.temperatureRaw / 10).toFixed(1)} °C${Math.abs(dT) >= 0.1 ? ` (Δ${dT >= 0 ? "+" : ""}${dT.toFixed(1)})` : ""}` });
+    const avgI = Math.round(hist.reduce((a, s) => a + s.i, 0) / hist.length);
+    rows.push({ k: "Avg / peak current", v: `${avgI} / ${Math.max(...hist.map((s) => s.i))} mA` });
+    rows.push({ k: "Peak voltage", v: `${(Math.max(...hist.map((s) => s.v)) / 1000).toFixed(3)} V` });
+  }
+  const eta = estimateEta(hist, l, prog);
+  if (eta) rows.push({ k: "Est. remaining", v: eta });
+  return rows;
+}
+
+function renderAnalysis() {
+  const el = document.getElementById("analysis");
+  if (!el) return;
+  const cards = [0, 1, 2, 3].filter((s) => latest[s] && history[s].length > 0).map((s) => {
+    const l = latest[s]!;
+    const rows = analyze(history[s], l, programs[s]);
+    return `<div class="acard">
+      <div class="ahead">Slot ${s + 1} <span class="phase">${phaseWord(l, programs[s])}</span></div>
+      <dl>${rows.map((r) => `<dt>${r.k}</dt><dd>${r.v}</dd>`).join("")}</dl>
+    </div>`;
+  });
+  el.innerHTML = cards.length
+    ? cards.join("") + `<p class="dev anote">Energy &amp; internal resistance are device-measured; capacity %, C-rate, ΔT and time-remaining are computed. Internal resistance is the main health indicator — lower is better, judged against the cell's rating.</p>`
+    : "";
+}
+
 async function loadPrograms() {
   for (let s = 0; s < 4; s++) {
     try {
@@ -237,6 +326,7 @@ async function refresh() {
       try {
         const l = await liveRetry(s);
         lives[s] = l;
+        latest[s] = l;
         rows.push(slotRow(l));
         const present = l.voltageMv > 0 || l.statusRaw !== 0;
         if (present) {
@@ -251,6 +341,7 @@ async function refresh() {
     }
     const el = document.getElementById("slots");
     if (el) el.innerHTML = rows.join("");
+    renderAnalysis();
     renderCharts();
     if (recording && recRows.length < REC_MAX) { recRows.push({ t: Date.now(), lives }); updateRecUi(); }
     // A transient read error is NOT a disconnect — keep polling. Real removal
@@ -440,6 +531,7 @@ function renderConnected(name: string, serial: string, fw: string, hw: string) {
     </table>
     <p id="status" class="status"></p>
     <div id="editor"></div>
+    <div id="analysis" class="analysis"></div>
     <div class="chart-head">
       <label>Chart:
         <select id="measure">

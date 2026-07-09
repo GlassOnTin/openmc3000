@@ -45,3 +45,11 @@ thead th { color: #999; font-size: .75rem; font-weight: 600; text-transform: upp
 .rec { display: inline-flex; align-items: center; gap: .5rem; }
 .rec button { font-size: .9rem; padding: .3rem .7rem; }
 button.rec-on { color: #fff; background: #c0392b; border-color: #c0392b; }
+.analysis { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: .6rem; margin: 1rem 0; align-items: start; }
+.acard { border: 1px solid #8884; border-radius: .5rem; padding: .6rem .8rem; max-width: 32rem; }
+.ahead { font-weight: 600; margin-bottom: .4rem; }
+.ahead .phase { color: #38bdf8; font-weight: 400; margin-left: .3rem; }
+.acard dl { display: grid; grid-template-columns: auto 1fr; gap: .12rem .8rem; margin: 0; }
+.acard dt { color: #999; }
+.acard dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.anote { grid-column: 1 / -1; font-size: .8rem; }

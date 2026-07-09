@@ -44,6 +44,10 @@ export interface Live {
   powerMw: number;
   /** Raw temperature word. ≈0.1 °C (304 → 30.4 °C), scale not independently confirmed. */
   temperatureRaw: number;
+  /** Bytes 16-17, internal resistance in mΩ. Device-measured; 0 at idle, sensible under load. */
+  resistanceMOhm: number;
+  /** Bytes 20-21, accumulated energy in mWh (firmware ≥ 1.05). */
+  energyMwh: number;
 }
 
 /**
@@ -65,6 +69,8 @@ export function parseLive(r: Uint8Array): Live {
     capacityMah: be16(r, 12),
     temperatureRaw: be16(r, 14),
     powerMw: be16(r, 22),
+    resistanceMOhm: be16(r, 16),
+    energyMwh: be16(r, 20),
   };
 }
 
