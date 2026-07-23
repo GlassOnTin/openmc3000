@@ -424,9 +424,26 @@ const DEFAULT_V: Record<string, { targetMv: number; cutMv: number }> = {
   LiIon: { targetMv: 4200, cutMv: 2750 }, "LiIo4.35": { targetMv: 4350, cutMv: 2750 },
   LiFe: { targetMv: 3600, cutMv: 2000 }, NiMH: { targetMv: 1650, cutMv: 900 },
   NiCd: { targetMv: 1650, cutMv: 900 }, Eneloop: { targetMv: 1650, cutMv: 900 },
-  NiZn: { targetMv: 1900, cutMv: 1200 }, RAM: { targetMv: 1650, cutMv: 900 },
+  // RAM (rechargeable alkaline) is the one chemistry killed by depth of discharge
+  // rather than by rate — cycle life collapses below ~1.0 V, so it gets a shallower
+  // cut-off than the 0.9 V IEC endpoint used for NiMH/NiCd.
+  NiZn: { targetMv: 1900, cutMv: 1200 }, RAM: { targetMv: 1650, cutMv: 1000 },
 };
-const DEFAULT_CHG_MA = 1000, DEFAULT_DIS_MA = 500, DEFAULT_ENDI_MA = 100;
+// Currents belong to the CELL, not the chemistry — a flat default is wrong by an
+// order of magnitude across the range the MC3000 takes (10440 ~350 mAh to 21700
+// ~5000 mAh). Derive a C-rate from the entered capacity: 0.5C charge is the standard
+// fast-charge rate for both NiMH (IEC 61951-2 fast-charges up to 1C to −ΔV) and
+// Li-ion, 0.5C discharge is a normal capacity-test rate, and 0.1C is the conventional
+// CV-taper termination for Li. MC3000 per-slot bounds are 0.05–3.0 A charge and
+// 0.05–2.0 A discharge, so clamp to those.
+const I_MIN = 50;
+// With no capacity entered no rate can be derived. Fall back to currents that stay
+// gentle even for the smallest cells the charger accepts, rather than to a number
+// that is safe only for 18650s — the user can raise them after entering a capacity.
+const FALLBACK = { chg: 200, dis: 200, endi: 50 };
+const rateMa = (capMah: number, c: number, fallback: number, max: number) =>
+  // floor, not round, to the 50 mA input step — a default should err under the rate
+  Math.min(max, Math.max(I_MIN, capMah > 0 ? Math.floor(capMah * c / 50) * 50 : fallback));
 const modeSetFor = (type: string) =>
   ["NiMH", "NiCd", "Eneloop"].includes(type) ? MODES_NI
     : ["NiZn", "RAM"].includes(type) ? MODES_ZN : MODES_LI;
@@ -477,8 +494,10 @@ async function openEditor(slot: number) {
         <button id="ed-cancel">Cancel</button>
       </div>
       <p id="ed-msg" class="status"></p>
-      <p class="note">Reset fills chemistry-standard defaults into the form (review, then Save).
-        The charger clamps values to the chosen chemistry; the saved result is read back and shown.</p>
+      <p class="note">Reset fills chemistry-standard defaults into the form (review, then Save), keeping
+        the capacity and deriving the currents from it at 0.5C. The saved result is read back and shown.
+        The charger does <em>not</em> range-check these against the chemistry — it accepted 1.0 V and
+        2.0 V end-voltages on a NiMH when probed — so the values here are the only guard.</p>
     </div>`;
   const typeSel = document.getElementById("ed-type") as HTMLSelectElement;
   const modeSel = document.getElementById("ed-mode") as HTMLSelectElement;
@@ -490,14 +509,18 @@ async function openEditor(slot: number) {
   });
   document.getElementById("ed-reset")!.addEventListener("click", () => {
     const d = DEFAULT_V[typeSel.value] ?? DEFAULT_V.LiIon;
+    // Keep the capacity — it identifies the cell, so it is the one field a reset must
+    // not throw away, and every current below is derived from it.
+    const cap = Number((document.getElementById("ed-cap") as HTMLInputElement).value) || 0;
     modeSel.value = "0";                               // Charge
-    setInput("ed-cap", 0);
-    setInput("ed-chg", DEFAULT_CHG_MA);
-    setInput("ed-dis", DEFAULT_DIS_MA);
+    setInput("ed-chg", rateMa(cap, 0.5, FALLBACK.chg, LIMIT.chg));
+    setInput("ed-dis", rateMa(cap, 0.5, FALLBACK.dis, LIMIT.dis));
     setInput("ed-end", (d.targetMv / 1000).toFixed(2));
     setInput("ed-cut", (d.cutMv / 1000).toFixed(2));
-    setInput("ed-endi", DEFAULT_ENDI_MA);
-    (document.getElementById("ed-msg")!).textContent = `defaults for ${typeSel.value} filled — review and Save`;
+    setInput("ed-endi", rateMa(cap, 0.1, FALLBACK.endi, LIMIT.endi));
+    (document.getElementById("ed-msg")!).textContent = cap > 0
+      ? `defaults for ${typeSel.value} at ${cap} mAh (0.5C charge) — review and Save`
+      : `defaults for ${typeSel.value} — no capacity set, so currents are minimums; enter the cell's mAh and reset again for 0.5C`;
   });
   document.getElementById("ed-cancel")!.addEventListener("click", closeEditor);
   document.getElementById("ed-save")!.addEventListener("click", () => saveEditor(slot, p.raw));
