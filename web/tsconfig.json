@@ -9,5 +9,5 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["w3c-web-hid", "vite/client"]
   },
-  "include": ["src", "../src"]
+  "include": ["src", "../src/protocol", "../src/transport/transport.ts", "../src/transport/webhid.ts"]
 }

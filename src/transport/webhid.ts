@@ -46,7 +46,9 @@ export class WebHidTransport implements Transport {
 
   async send(report: Uint8Array): Promise<void> {
     // reportId 0 (device has none); report is the full 64-byte payload.
-    await this.device.sendReport(0, report);
+    // copy: sendReport wants an ArrayBuffer-backed view, and Uint8Array is
+    // generic over ArrayBufferLike since TS 5.7. 64 bytes, so who cares.
+    await this.device.sendReport(0, new Uint8Array(report));
   }
 
   async receive(timeoutMs: number): Promise<Uint8Array | null> {

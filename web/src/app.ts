@@ -419,6 +419,7 @@ const MODES_ZN = ["Charge", "Refresh", "Discharge", "Cycle"];
 // The charger does NOT clamp this field — it accepted 1000 and 2000 mV on a NiMH
 // without complaint (probed on hardware) — so these values are the only guard.
 const isLi = (type: string) => type.startsWith("Li");
+const endLabel = (type: string) => isLi(type) ? "Target voltage (V)" : "Charge cut-off ceiling (V)";
 const DEFAULT_V: Record<string, { targetMv: number; cutMv: number }> = {
   LiIon: { targetMv: 4200, cutMv: 2750 }, "LiIo4.35": { targetMv: 4350, cutMv: 2750 },
   LiFe: { targetMv: 3600, cutMv: 2000 }, NiMH: { targetMv: 1650, cutMv: 900 },
@@ -466,7 +467,7 @@ async function openEditor(slot: number) {
         ${num("ed-cap", "Capacity (mAh)", p.capacityMah, LIMIT.cap, 100)}
         ${num("ed-chg", "Charge current (mA)", p.chargeCurrentMa, LIMIT.chg, 50)}
         ${num("ed-dis", "Discharge current (mA)", p.dischargeCurrentMa, LIMIT.dis, 50)}
-        ${num("ed-end", isLi(type) ? "Target voltage (V)" : "Charge cut-off ceiling (V)", (p.chargeEndMv / 1000).toFixed(2), LIMIT.mv / 1000, 0.05)}
+        ${num("ed-end", endLabel(p.batteryType), (p.chargeEndMv / 1000).toFixed(2), LIMIT.mv / 1000, 0.05)}
         ${num("ed-cut", "Cut-off voltage (V)", (p.dischargeCutMv / 1000).toFixed(2), LIMIT.mv / 1000, 0.05)}
         ${num("ed-endi", "Termination current (mA)", p.chargeEndCurrentMa, LIMIT.endi, 10)}
       </div>
@@ -482,7 +483,11 @@ async function openEditor(slot: number) {
   const typeSel = document.getElementById("ed-type") as HTMLSelectElement;
   const modeSel = document.getElementById("ed-mode") as HTMLSelectElement;
   const setInput = (id: string, v: string | number) => { (document.getElementById(id) as HTMLInputElement).value = String(v); };
-  typeSel.addEventListener("change", () => { modeSel.innerHTML = modeOptions(typeSel.value, Number(modeSel.value)); });
+  typeSel.addEventListener("change", () => {
+    modeSel.innerHTML = modeOptions(typeSel.value, Number(modeSel.value));
+    // the end-voltage field is a CV target on Li but a cut-off ceiling on the rest
+    document.getElementById("ed-end")!.parentElement!.firstChild!.nodeValue = endLabel(typeSel.value);
+  });
   document.getElementById("ed-reset")!.addEventListener("click", () => {
     const d = DEFAULT_V[typeSel.value] ?? DEFAULT_V.LiIon;
     modeSel.value = "0";                               // Charge
