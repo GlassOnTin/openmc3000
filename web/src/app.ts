@@ -80,7 +80,9 @@ let measure: Measure = "v";
 // not just against the data. Approximate, chemistry-standard values.
 const CHEM: Record<string, { min: number; max: number }> = {
   LiIon: { min: 2.5, max: 4.2 }, "LiIo4.35": { min: 2.5, max: 4.35 }, LiFe: { min: 2.0, max: 3.65 },
-  NiMH: { min: 0.9, max: 1.5 }, NiCd: { min: 0.9, max: 1.5 }, Eneloop: { min: 0.9, max: 1.5 },
+  // Ni max is the published max charging voltage per cell (~1.65), not the ~1.5 V a
+  // cell sits at mid-charge — a healthy fast charge peaks near 1.55–1.6 V at −ΔV.
+  NiMH: { min: 0.9, max: 1.65 }, NiCd: { min: 0.9, max: 1.65 }, Eneloop: { min: 0.9, max: 1.65 },
   NiZn: { min: 1.2, max: 1.9 }, RAM: { min: 0.9, max: 1.65 },
 };
 
@@ -189,23 +191,37 @@ function phaseWord(l: Live, prog: SlotProgram | null): string {
 
 /** Rough time-remaining estimate. CV: extrapolate exponential current decay to the
  *  termination current. Discharge: linear voltage slope to the cut-off. Marked "~". */
+// The charger periodically drops the current to ~40% for ~2 s (measured: every ~21 s
+// on a NiMH at 1 A) to sample a less-loaded terminal voltage. That's ~10% of samples,
+// so endpoint slopes and the instantaneous current are unusable here — take medians.
+const median = (xs: number[]) => { const a = [...xs].sort((p, q) => p - q); return a[a.length >> 1]; };
+
 function estimateEta(hist: Sample[], l: Live, prog: SlotProgram | null): string | null {
   if (!prog || hist.length < 8) return null;
-  const win = hist.slice(-8);
+  const win = hist.slice(-25);                       // ≥ one dip period at 1 Hz
   const dt = (win[win.length - 1].ts - win[0].ts) / 1000;
   if (dt <= 0) return null;
-  if (l.statusRaw === 1 && l.voltageMv >= prog.chargeEndMv - 20) {   // CV
+  const half = win.length >> 1;
+  const medOf = (from: number, to: number, f: (s: Sample) => number) => median(win.slice(from, to).map(f));
+  const iNow = median(win.map((s) => s.i));
+  // Only the Li chemistries hold a CV phase; NiMH/NiCd/NiZn/RAM charge at constant
+  // current until −ΔV or a timer, and their end-voltage field is not a CV setpoint.
+  const cv = l.batteryType.startsWith("Li") && l.voltageMv >= prog.chargeEndMv - 20;
+  if (l.statusRaw === 1 && cv) {                     // CV: extrapolate current decay
     const termI = Math.max(prog.chargeEndCurrentMa, 20);
-    const i0 = win[0].i, i1 = win[win.length - 1].i;
-    if (i1 < i0 && i1 > 0 && l.currentMa > termI) {
-      const tau = -dt / Math.log(i1 / i0);
-      const secs = tau * Math.log(l.currentMa / termI);
+    const i0 = medOf(0, half, (s) => s.i), i1 = medOf(half, win.length, (s) => s.i);
+    if (i1 < i0 && i1 > 0 && iNow > termI) {
+      const tau = -(dt / 2) / Math.log(i1 / i0);     // halves are ~dt/2 apart
+      const secs = tau * Math.log(iNow / termI);
       if (secs > 0 && secs < 86400) return `~${fmtDur(secs)} to termination`;
     }
-  } else if (l.statusRaw === 2) {                                    // discharge
-    const v0 = win[0].v, v1 = win[win.length - 1].v;
+  } else if (l.statusRaw === 1 && prog.capacityMah > 0 && iNow > 0) {   // CC: coulomb count
+    const secs = (prog.capacityMah - l.capacityMah) / iNow * 3600;
+    if (secs > 0 && secs < 86400) return `~${fmtDur(secs)} to rated capacity`;
+  } else if (l.statusRaw === 2) {                    // discharge: voltage slope to cut-off
+    const v0 = medOf(0, half, (s) => s.v), v1 = medOf(half, win.length, (s) => s.v);
     if (v1 < v0) {
-      const secs = (prog.dischargeCutMv - l.voltageMv) / ((v1 - v0) / dt);
+      const secs = (prog.dischargeCutMv - l.voltageMv) / ((v1 - v0) / (dt / 2));
       if (secs > 0 && secs < 86400) return `~${fmtDur(secs)} to cut-off`;
     }
   }
@@ -389,10 +405,24 @@ const MODES_NI = ["Charge", "Refresh", "Break-in", "Discharge", "Cycle"];
 const MODES_ZN = ["Charge", "Refresh", "Discharge", "Cycle"];
 // Conservative, chemistry-standard defaults for "reset to defaults" (mV). Currents
 // are the same gentle values for all chemistries; the user reviews before saving.
+//
+// `targetMv` means two different things by chemistry, and getting that wrong ends a
+// charge early. For Li*/NiZn/RAM it is a voltage the charger holds or charges up to.
+// For NiMH/NiCd there is NO such target — they charge at constant current and
+// terminate on −ΔV, dT/dt, cut temperature or the timer. The field is then a hard
+// cut-off CEILING, and the industry figure is the published maximum charging voltage
+// per cell, ~1.65 V for NiMH and NiCd (Energizer/Panasonic NiMH handbooks; IEC
+// 61951-2 fast charge is 1C to −ΔV). A cell under a 0.5C charge sits at 1.45–1.55 V
+// for most of the charge, so a 1500 ceiling terminates early — observed fw 1.25
+// 2026-07-23, a NiMH stopped at 132 mAh. NiZn (1.9 V full, PowerGenix spec) and RAM
+// (~1.65 V) genuinely are targets and are left alone.
+// The charger does NOT clamp this field — it accepted 1000 and 2000 mV on a NiMH
+// without complaint (probed on hardware) — so these values are the only guard.
+const isLi = (type: string) => type.startsWith("Li");
 const DEFAULT_V: Record<string, { targetMv: number; cutMv: number }> = {
   LiIon: { targetMv: 4200, cutMv: 2750 }, "LiIo4.35": { targetMv: 4350, cutMv: 2750 },
-  LiFe: { targetMv: 3600, cutMv: 2000 }, NiMH: { targetMv: 1500, cutMv: 900 },
-  NiCd: { targetMv: 1500, cutMv: 900 }, Eneloop: { targetMv: 1500, cutMv: 900 },
+  LiFe: { targetMv: 3600, cutMv: 2000 }, NiMH: { targetMv: 1650, cutMv: 900 },
+  NiCd: { targetMv: 1650, cutMv: 900 }, Eneloop: { targetMv: 1650, cutMv: 900 },
   NiZn: { targetMv: 1900, cutMv: 1200 }, RAM: { targetMv: 1650, cutMv: 900 },
 };
 const DEFAULT_CHG_MA = 1000, DEFAULT_DIS_MA = 500, DEFAULT_ENDI_MA = 100;
@@ -436,7 +466,7 @@ async function openEditor(slot: number) {
         ${num("ed-cap", "Capacity (mAh)", p.capacityMah, LIMIT.cap, 100)}
         ${num("ed-chg", "Charge current (mA)", p.chargeCurrentMa, LIMIT.chg, 50)}
         ${num("ed-dis", "Discharge current (mA)", p.dischargeCurrentMa, LIMIT.dis, 50)}
-        ${num("ed-end", "Target voltage (V)", (p.chargeEndMv / 1000).toFixed(2), LIMIT.mv / 1000, 0.05)}
+        ${num("ed-end", isLi(type) ? "Target voltage (V)" : "Charge cut-off ceiling (V)", (p.chargeEndMv / 1000).toFixed(2), LIMIT.mv / 1000, 0.05)}
         ${num("ed-cut", "Cut-off voltage (V)", (p.dischargeCutMv / 1000).toFixed(2), LIMIT.mv / 1000, 0.05)}
         ${num("ed-endi", "Termination current (mA)", p.chargeEndCurrentMa, LIMIT.endi, 10)}
       </div>
