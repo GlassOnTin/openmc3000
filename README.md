@@ -90,9 +90,31 @@ doesn't appear.
 
 ## Safety
 
-`start` begins a real charge/discharge at whatever the slot is programmed for — **know your
-cell.** openMC3000 has no protections beyond the charger's own firmware, and while it warns
-about chemistry limits it cannot guarantee a program suits the cell you insert.
+**This writes charge parameters to a device that charges lithium cells, and the charger does
+not range-check what it is sent.** Probed on hardware, the MC3000 accepted a 1.0 V and a 2.0 V
+charge end-voltage on a NiMH without complaint. There is no firmware backstop behind the
+values in the editor: **review every field before saving, and know your cell.**
+
+`start` begins a real charge or discharge at whatever the slot is programmed for. openMC3000
+has no protections beyond the charger's own, and cannot know that a program suits the cell you
+inserted.
+
+*Reset to defaults* fills chemistry-standard figures and derives the currents from the
+capacity you enter at 0.5C — they are a starting point for review, not a recommendation for
+your cell. They are pinned by tests (`test/defaults.test.ts`), because in practice this is
+where the mistakes have been: an early NiMH ceiling of 1.50 V terminated a charge at 9% of the
+cell's rating, and a flat 1000 mA default would have been 2.9C into a 10440.
+
+### What has actually been exercised
+
+| | |
+|---|---|
+| Firmware / hardware | 1.25 / 2.2, **a single unit** |
+| Chemistries run on real cells | **LiIon** (21700, 18650) and **NiMH** (AA) |
+| Chemistries *not* yet run | LiFe, LiIo4.35, NiCd, Eneloop, NiZn, RAM — their defaults are chemistry-standard figures that no cell here has been charged against |
+| Browsers | Chrome / Edge only. **WebHID is not implemented in Firefox or Safari** and the web app cannot work there — use the CLI or the bridge instead. |
+
+Reports from other firmware revisions, chemistries and cells are welcome — that is the gap.
 
 ## Legal
 
