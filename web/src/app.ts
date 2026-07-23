@@ -87,7 +87,14 @@ const CHEM: Record<string, { min: number; max: number }> = {
 };
 
 const W = 320, H = 140, padL = 44, padR = 12, padT = 10, padB = 26;
-const fmtDur = (s: number) => s < 60 ? `${Math.round(s)}s` : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+// Charges run for hours, so carry into hours rather than reporting "123:47". Two
+// units is enough — seconds on a two-hour estimate are noise.
+const fmtDur = (s: number) => {
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+  if (s < 60) return `${Math.round(s)}s`;
+  if (s < 3600) return `${m}m ${String(Math.round(s % 60)).padStart(2, "0")}s`;
+  return `${h}h ${String(m).padStart(2, "0")}m`;
+};
 
 function chartSvg(slot: number, samples: Sample[], prog: SlotProgram | null): string {
   const m = MEASURES[measure];
