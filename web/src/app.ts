@@ -359,6 +359,14 @@ function stopPolling() { if (timer) { clearInterval(timer); timer = undefined; }
 
 async function onStart() {
   setStatus("starting…");
+  // ponytail: the charger ignores START if a slot is latched — reproducibly seen
+  // right after a program save (observed fw 1.25, NiMH slot 1); a STOP first clears
+  // it. Skipped when something is already running so a charge in progress, and its
+  // capacity counters, are never interrupted.
+  if (!latest.some((l) => l && (l.statusRaw === 1 || l.statusRaw === 2))) {
+    await withLock(() => transport!.send(stop()));
+    await sleep(250);
+  }
   await withLock(() => transport!.send(start()));   // no reply; charger acts silently
   await sleep(1500);                                // soft-start ramps over ~7 s
   setStatus("");

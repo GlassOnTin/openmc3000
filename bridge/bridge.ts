@@ -41,6 +41,7 @@ async function main() {
     return run;
   };
 
+  let running = false;   // any slot charging/discharging, per the last poll
   const sys = parseSystem(await withLock(() => request(t, readSystem())));
   const id = `mc3000_${sys.serial}`;
   const base = `mc3000/${sys.serial}`;
@@ -91,6 +92,10 @@ async function main() {
       try {
         if (topic === `${base}/cmd/run`) {
           const on = payload.trim().toUpperCase() === "ON";
+          // START is ignored while a slot is latched (seen right after a program
+          // write) — a STOP first clears it. Only when nothing is already running,
+          // so we never interrupt a charge in progress.
+          if (on && !running) { await withLock(() => t.send(stop())); await new Promise((r) => setTimeout(r, 250)); }
           await withLock(() => t.send(on ? start() : stop()));   // global; no reply
           console.log(`command: ${on ? "START" : "STOP"} (all)`);
         } else {
@@ -127,6 +132,7 @@ async function main() {
         console.error(`slot ${s + 1} read failed:`, (e as Error).message);
       }
     }
+    running = anyRunning;
     publish(`${base}/run`, anyRunning ? "ON" : "OFF");
   };
   await poll();
