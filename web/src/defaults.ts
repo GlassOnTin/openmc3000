@@ -11,8 +11,21 @@
 // NOT exercised: LiFe, LiIo4.35, NiCd, Eneloop, NiZn, RAM — those rows are
 // chemistry-standard figures that no cell has yet been charged against here.
 
-/** MC3000 field bounds: 0.05–3.0 A charge, 0.05–2.0 A discharge per slot. */
-export const LIMIT = { chg: 3000, dis: 2000, cap: 60000, mv: 4500, endi: 1000 };
+/** MC3000 field bounds: 0.05–3.0 A charge, 0.05–2.0 A discharge per slot.
+ *  cutmin is our own input cap, not the device's — the charger accepts the full u16
+ *  (probed: it took 65535 min without complaint), so this bound is the only guard. */
+export const LIMIT = { chg: 3000, dis: 2000, cap: 60000, mv: 4500, endi: 1000, cutmin: 9999 };
+
+// Safety cut-off time (minutes). The charger ends a phase with a "timer cut" error
+// (status 0x87) at this limit. A normal fast charge finishes well inside 180 min, but
+// a Break-in is an IEC 61951-2 forming charge — 0.1C for ~16 h — so 180 min cuts it
+// off at ~9% (observed fw 1.25: a 145 mA break-in died at 412 mAh, exactly 180 min in).
+// Break-in therefore needs a cut time above the 16 h charge phase; 990 min (16.5 h)
+// clears it, with the 45 °C temp cut still the real backstop.
+export const DEFAULT_CUT_MIN = 180, BREAKIN_CUT_MIN = 990;
+/** Cut time for a mode by its label — Break-in needs the long forming-charge window. */
+export const cutMinFor = (modeLabel: string) =>
+  modeLabel === "Break-in" ? BREAKIN_CUT_MIN : DEFAULT_CUT_MIN;
 
 export const isLi = (type: string) => type.startsWith("Li");
 export const endLabel = (type: string) =>

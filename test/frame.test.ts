@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { buildFrame, checkReply, be16, REPORT_SIZE } from "../src/protocol/frame.ts";
-import { readLive, readSlotProgram, readSystem, start, stop, parseLive, parseSystem, parseSlotProgram, buildSetProgram } from "../src/protocol/commands.ts";
+import { readLive, readSlotProgram, readSystem, start, stop, parseLive, parseSystem, parseSlotProgram, buildSetProgram, statusName, isErrorStatus } from "../src/protocol/commands.ts";
 
 const head = (f: Uint8Array, n: number) => Array.from(f.subarray(0, n));
 
@@ -111,6 +111,28 @@ test("parseSlotProgram decodes the captured slot-1 program (fw 1.25)", () => {
   assert.equal(p.dischargeCurrentMa, 500);    // 0x01f4
   assert.equal(p.dischargeCutMv, 3300);       // 0x0ce4
   assert.equal(p.chargeEndMv, 4200);          // 0x1068
+});
+
+test("status byte: running states, named and raw error codes", () => {
+  assert.equal(statusName(0), "standby");
+  assert.equal(statusName(1), "charge");
+  assert.equal(statusName(4), "finish");
+  assert.equal(statusName(0x87), "timer cut");        // seen on the MC3000 display, fw 1.25
+  assert.equal(statusName(0x85), "error(0x85)");      // in the error range, not yet identified
+  assert.equal(statusName(0x30), "unknown(0x30)");    // out of both ranges
+  assert.ok(isErrorStatus(0x87) && isErrorStatus(0x80) && !isErrorStatus(4));
+});
+
+test("buildSetProgram cut-time override writes bytes 29-30 (read 27-28)", () => {
+  const read = new Uint8Array(REPORT_SIZE);
+  read.set([0x5f,0x00,0x00,0x00,0x00,0x00,0x00,0x03,0xe8,0x01,0xf4,0x0c,0xe4,0x10,0x68,0x00,
+            0x64,0x01,0xf4,0x01,0x00,0x00,0x03,0x03,0x00,0x00,0x2d,0x00,0xb4,0x00,0x00,0x00], 0);
+  assert.equal(parseSlotProgram(read).cutTimeMin, 180);          // read bytes 27-28 = 0,180
+  const w = buildSetProgram(read, 0, { cutTimeMin: 990 });
+  assert.equal((w[29] << 8) | w[30], 990);
+  // checksum stays valid after the override
+  let sum = 0; for (let i = 2; i <= 32; i++) sum += w[i];
+  assert.equal(w[33], sum & 0xff);
 });
 
 test("bridge payload: stateJson + HA discovery from a captured LIVE frame", async () => {

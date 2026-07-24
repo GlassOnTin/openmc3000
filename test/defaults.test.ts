@@ -5,7 +5,8 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import {
-  C_CHARGE, C_DISCHARGE, C_TERMINATE, CHEM, DEFAULT_V, FALLBACK, I_MIN, LIMIT, endLabel, isLi, rateMa,
+  BREAKIN_CUT_MIN, C_CHARGE, C_DISCHARGE, C_TERMINATE, CHEM, DEFAULT_CUT_MIN, DEFAULT_V,
+  FALLBACK, I_MIN, LIMIT, cutMinFor, endLabel, isLi, rateMa,
 } from "../web/src/defaults.ts";
 import { BATTERY_TYPES } from "../src/protocol/commands.ts";
 
@@ -83,6 +84,15 @@ test("every default sits inside its own chart safety window", () => {
     assert.ok(d.cutMv / 1000 >= c.min, `${t} cut ${d.cutMv} is below safe min ${c.min}V`);
     assert.ok(d.cutMv < d.targetMv, `${t} cut-off is not below its target`);
   }
+});
+
+test("Break-in gets a cut time above its 16 h forming charge; other modes stay short", () => {
+  // The bug this pins: the default 180 min killed a 145 mA break-in at 412 mAh (9%).
+  assert.equal(cutMinFor("Break-in"), BREAKIN_CUT_MIN);
+  assert.ok(BREAKIN_CUT_MIN > 16 * 60, "break-in cut time must clear a 16 h charge");
+  assert.equal(cutMinFor("Charge"), DEFAULT_CUT_MIN);
+  assert.equal(cutMinFor("Discharge"), DEFAULT_CUT_MIN);
+  assert.ok(BREAKIN_CUT_MIN <= LIMIT.cutmin, "break-in default exceeds the input cap");
 });
 
 test("the end-voltage field is labelled by what it does for that chemistry", () => {

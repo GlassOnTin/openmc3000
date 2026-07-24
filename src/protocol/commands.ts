@@ -13,8 +13,20 @@ export const BATTERY_TYPES = [
   "LiIon", "LiFe", "LiIo4.35", "NiMH", "NiCd", "NiZn", "Eneloop", "RAM",
 ] as const;
 
-/** buf[5] of a LIVE reply. 0x80+ are error codes. */
+/** buf[5] of a LIVE reply. 0-4 are running states; 0x80-0xFF are error codes
+ *  (DataExplorer's own source comment: "0x80--0xff：error code"). It collapses every
+ *  one of them to a single "Error", so the specific meanings below come from the
+ *  device's front-panel display, not from DataExplorer. Only codes seen on hardware
+ *  are named; the rest are shown raw rather than guessed. */
 export const STATUS = ["standby", "charge", "discharge", "resting", "finish"] as const;
+export const ERROR_STATUS: Record<number, string> = {
+  0x87: "timer cut",   // the slot's CUT TIME expired — seen on the MC3000 display, fw 1.25
+};
+/** Human-readable status for a LIVE status byte. */
+export function statusName(raw: number): string {
+  return STATUS[raw] ?? (raw >= 0x80 ? (ERROR_STATUS[raw] ?? `error(0x${raw.toString(16)})`) : `unknown(0x${raw.toString(16)})`);
+}
+export const isErrorStatus = (raw: number): boolean => raw >= 0x80;
 
 export const readLive = (slot: number) => buildFrame(Cmd.LIVE, [0x00, slot]);
 export const readSlotProgram = (slot: number) => buildFrame(Cmd.SLOT_PROGRAM, [0x00, slot]);
@@ -63,7 +75,7 @@ export function parseLive(r: Uint8Array): Live {
     batteryType: BATTERY_TYPES[r[2]] ?? `unknown(${r[2]})`,
     mode: r[3],
     statusRaw,
-    status: STATUS[statusRaw] ?? `error(0x${statusRaw.toString(16)})`,
+    status: statusName(statusRaw),
     voltageMv: be16(r, 8),
     currentMa: be16(r, 10),
     capacityMah: be16(r, 12),
@@ -92,6 +104,9 @@ export interface ProgramEdits {
   dischargeCutMv?: number;
   chargeEndMv?: number;
   chargeEndCurrentMa?: number;
+  /** Safety cut-off time, minutes. The charger terminates with a "timer cut" error
+   *  (status 0x87) when a phase runs this long. NOT clamped by the device. */
+  cutTimeMin?: number;
 }
 
 export function buildSetProgram(readReply: Uint8Array, slot: number, o: ProgramEdits = {}): Uint8Array {
@@ -118,6 +133,7 @@ export function buildSetProgram(readReply: Uint8Array, slot: number, o: ProgramE
   if (o.dischargeCutMv !== undefined) put16(13, o.dischargeCutMv);
   if (o.chargeEndMv !== undefined) put16(15, o.chargeEndMv);
   if (o.chargeEndCurrentMa !== undefined) put16(17, o.chargeEndCurrentMa);
+  if (o.cutTimeMin !== undefined) put16(29, o.cutTimeMin);   // write bytes 29-30 (read 27-28)
   let sum = 0;                       // checksum = sum(w[2..32]) inclusive
   for (let i = 2; i <= 32; i++) sum += w[i];
   w[33] = sum & 0xff;
@@ -154,6 +170,8 @@ export interface SlotProgram {
   chargeEndMv: number;
   /** Charge termination current, mA — bytes 15-16. */
   chargeEndCurrentMa: number;
+  /** Safety cut-off time, minutes — bytes 27-28. 0x87 "timer cut" fires at this. */
+  cutTimeMin: number;
   /** The raw 0x5F reply — pass to buildSetProgram() to write it back with edits. */
   raw: Uint8Array;
 }
@@ -170,6 +188,7 @@ export function parseSlotProgram(r: Uint8Array): SlotProgram {
     dischargeCutMv: be16(r, 11),
     chargeEndMv: be16(r, 13),
     chargeEndCurrentMa: be16(r, 15),
+    cutTimeMin: be16(r, 27),
     raw: r,
   };
 }

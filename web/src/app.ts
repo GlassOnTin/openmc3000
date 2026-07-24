@@ -8,7 +8,8 @@ import { checkReply } from "../../src/protocol/frame.ts";
 import { request, type Transport } from "../../src/transport/transport.ts";
 import { WebHidTransport } from "../../src/transport/webhid.ts";
 import {
-  CHEM, C_CHARGE, C_DISCHARGE, C_TERMINATE, DEFAULT_V, FALLBACK, LIMIT, endLabel, rateMa,
+  BREAKIN_CUT_MIN, CHEM, C_CHARGE, C_DISCHARGE, C_TERMINATE, DEFAULT_V, FALLBACK, LIMIT,
+  cutMinFor, endLabel, rateMa,
 } from "./defaults.ts";
 
 const app = document.getElementById("app")!;
@@ -444,6 +445,7 @@ async function openEditor(slot: number) {
         ${num("ed-end", endLabel(p.batteryType), (p.chargeEndMv / 1000).toFixed(2), LIMIT.mv / 1000, 0.05)}
         ${num("ed-cut", "Cut-off voltage (V)", (p.dischargeCutMv / 1000).toFixed(2), LIMIT.mv / 1000, 0.05)}
         ${num("ed-endi", "Termination current (mA)", p.chargeEndCurrentMa, LIMIT.endi, 10)}
+        ${num("ed-cuttime", "Safety cut time (min)", p.cutTimeMin, LIMIT.cutmin, 30)}
       </div>
       <div class="controls">
         <button id="ed-save">Save to slot ${slot + 1}</button>
@@ -452,18 +454,26 @@ async function openEditor(slot: number) {
       </div>
       <p id="ed-msg" class="status"></p>
       <p class="note">Reset fills chemistry-standard defaults into the form (review, then Save), keeping
-        the capacity and deriving the currents from it at 0.5C. The saved result is read back and shown.
-        The charger does <em>not</em> range-check these against the chemistry — it accepted 1.0 V and
-        2.0 V end-voltages on a NiMH when probed — so the values here are the only guard.</p>
+        the capacity and deriving the currents from it at 0.5C. Selecting <em>Break-in</em> raises the
+        safety cut time to ${BREAKIN_CUT_MIN} min, since a forming charge runs ~16 h and the 180 min
+        default would stop it early. The saved result is read back and shown. The charger does
+        <em>not</em> range-check any of this — it accepted 1.0 V end-voltages and 65535 min cut times on
+        a NiMH when probed — so the values here are the only guard.</p>
     </div>`;
   const typeSel = document.getElementById("ed-type") as HTMLSelectElement;
   const modeSel = document.getElementById("ed-mode") as HTMLSelectElement;
   const setInput = (id: string, v: string | number) => { (document.getElementById(id) as HTMLInputElement).value = String(v); };
+  const modeLabel = () => modeSetFor(typeSel.value)[Number(modeSel.value)] ?? "";
+  // Break-in is a ~16 h forming charge, so it needs a much longer safety cut time than
+  // the default 180 min — otherwise it dies at ~9%. Bump the field to match the mode.
+  const syncCutTime = () => setInput("ed-cuttime", cutMinFor(modeLabel()));
   typeSel.addEventListener("change", () => {
     modeSel.innerHTML = modeOptions(typeSel.value, Number(modeSel.value));
     // the end-voltage field is a CV target on Li but a cut-off ceiling on the rest
     document.getElementById("ed-end")!.parentElement!.firstChild!.nodeValue = endLabel(typeSel.value);
+    syncCutTime();
   });
+  modeSel.addEventListener("change", syncCutTime);
   document.getElementById("ed-reset")!.addEventListener("click", () => {
     const d = DEFAULT_V[typeSel.value] ?? DEFAULT_V.LiIon;
     // Keep the capacity — it identifies the cell, so it is the one field a reset must
@@ -475,6 +485,7 @@ async function openEditor(slot: number) {
     setInput("ed-end", (d.targetMv / 1000).toFixed(2));
     setInput("ed-cut", (d.cutMv / 1000).toFixed(2));
     setInput("ed-endi", rateMa(cap, C_TERMINATE, FALLBACK.endi, LIMIT.endi));
+    syncCutTime();                                    // Charge mode → 180 min
     (document.getElementById("ed-msg")!).textContent = cap > 0
       ? `defaults for ${typeSel.value} at ${cap} mAh (${C_CHARGE}C charge) — review and Save`
       : `defaults for ${typeSel.value} — no capacity set, so currents are minimums; enter the cell's mAh and reset again for 0.5C`;
@@ -495,11 +506,13 @@ async function saveEditor(slot: number, raw: Uint8Array) {
     chargeEndMv: Math.round(val("ed-end") * 1000),
     dischargeCutMv: Math.round(val("ed-cut") * 1000),
     chargeEndCurrentMa: val("ed-endi"),
+    cutTimeMin: val("ed-cuttime"),
   };
   const checks: [number, number][] = [
     [edits.chargeCurrentMa!, LIMIT.chg], [edits.dischargeCurrentMa!, LIMIT.dis],
     [edits.capacityMah!, LIMIT.cap], [edits.chargeEndMv!, LIMIT.mv],
     [edits.dischargeCutMv!, LIMIT.mv], [edits.chargeEndCurrentMa!, LIMIT.endi],
+    [edits.cutTimeMin!, LIMIT.cutmin],
   ];
   if (checks.some(([v, max]) => !Number.isFinite(v) || v < 0 || v > max)) {
     msg("a value is out of range — check the limits and try again");
