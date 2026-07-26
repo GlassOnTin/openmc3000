@@ -104,8 +104,9 @@ export interface ProgramEdits {
   dischargeCutMv?: number;
   chargeEndMv?: number;
   chargeEndCurrentMa?: number;
-  /** Safety cut-off time, minutes. The charger terminates with a "timer cut" error
-   *  (status 0x87) when a phase runs this long. NOT clamped by the device. */
+  /** Safety cut-off time, minutes — TOTAL elapsed program time, not per-phase. The
+   *  charger terminates with a "timer cut" error (status 0x87) when the whole program
+   *  runs this long (confirmed fw 1.25 at 180 and 990 min). NOT clamped by the device. */
   cutTimeMin?: number;
 }
 

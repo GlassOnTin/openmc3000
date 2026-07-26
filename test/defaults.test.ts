@@ -86,10 +86,12 @@ test("every default sits inside its own chart safety window", () => {
   }
 });
 
-test("Break-in gets a cut time above its 16 h forming charge; other modes stay short", () => {
-  // The bug this pins: the default 180 min killed a 145 mA break-in at 412 mAh (9%).
+test("Break-in gets a cut time covering the whole charge+discharge+recharge cycle", () => {
+  // The cut time is TOTAL elapsed program time (confirmed on hardware at 180 and 990
+  // min). The bugs this pins: 180 min killed the charge leg at 9%; 990 min covered the
+  // 16 h charge but cut 30 min into the discharge. A full break-in is ~34 h+.
   assert.equal(cutMinFor("Break-in"), BREAKIN_CUT_MIN);
-  assert.ok(BREAKIN_CUT_MIN > 16 * 60, "break-in cut time must clear a 16 h charge");
+  assert.ok(BREAKIN_CUT_MIN > 34 * 60, "break-in cut time must clear the full ~34 h cycle");
   assert.equal(cutMinFor("Charge"), DEFAULT_CUT_MIN);
   assert.equal(cutMinFor("Discharge"), DEFAULT_CUT_MIN);
   assert.ok(BREAKIN_CUT_MIN <= LIMIT.cutmin, "break-in default exceeds the input cap");

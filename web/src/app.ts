@@ -455,8 +455,8 @@ async function openEditor(slot: number) {
       <p id="ed-msg" class="status"></p>
       <p class="note">Reset fills chemistry-standard defaults into the form (review, then Save), keeping
         the capacity and deriving the currents from it at 0.5C. Selecting <em>Break-in</em> raises the
-        safety cut time to ${BREAKIN_CUT_MIN} min, since a forming charge runs ~16 h and the 180 min
-        default would stop it early. The saved result is read back and shown. The charger does
+        safety cut time to ${BREAKIN_CUT_MIN} min (total program time), since a full break-in cycle
+        runs ~34 h and the 180 min default would stop it early. The saved result is read back and shown. The charger does
         <em>not</em> range-check any of this — it accepted 1.0 V end-voltages and 65535 min cut times on
         a NiMH when probed — so the values here are the only guard.</p>
     </div>`;

@@ -121,7 +121,7 @@ Offsets cross-checked against `MC3000.convertDataBytes()` and `MC3000.java:1608,
 | `1`    | slot number | 0-based **[verified]** |
 | `2`    | battery type | `0=LiIon 1=LiFe 2=LiIo4.35 3=NiMH 4=NiCd 5=NiZn 6=Eneloop 7=RAM` **[verified for LiIon]** |
 | `3`    | mode | `0=Charge 1=Refresh 2=Storage/Break-in 3=Discharge 4=Cycle` **[unverified]** |
-| `5`    | status | `0=standby 1=charge 2=discharge 3=resting 4=finish`; `0x80–0xFF`=error code **[verified for 0,1,2,4]**. DataExplorer's source comments this range as "error code" but decodes none of them (all → "Error"). Individual codes come from the front-panel display: `0x87` = **timer cut** (the slot's CUT TIME expired — verified fw 1.25, forming charge stopped at exactly 180 min). `0x85` seen transiently at charge start, meaning not yet identified. |
+| `5`    | status | `0=standby 1=charge 2=discharge 3=resting 4=finish`; `0x80–0xFF`=error code **[verified for 0,1,2,4]**. DataExplorer's source comments this range as "error code" but decodes none of them (all → "Error"). Individual codes come from the front-panel display: `0x87` = **timer cut** — the CUT TIME expired. CUT TIME is **total elapsed program time, not per-phase**: verified fw 1.25 at two values, a 180 min limit fired at 179 min and a 990 min limit fired at 990 min (30 min into a break-in's discharge leg, after its full 16 h charge leg). `0x85` seen transiently at charge start, meaning not yet identified. |
 | `8..9`   | voltage, mV | **[verified]** |
 | `10..11` | current, mA | **[verified]** |
 | `12..13` | capacity, mAh | **[verified]** |

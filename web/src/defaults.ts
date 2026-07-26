@@ -16,13 +16,16 @@
  *  (probed: it took 65535 min without complaint), so this bound is the only guard. */
 export const LIMIT = { chg: 3000, dis: 2000, cap: 60000, mv: 4500, endi: 1000, cutmin: 9999 };
 
-// Safety cut-off time (minutes). The charger ends a phase with a "timer cut" error
-// (status 0x87) at this limit. A normal fast charge finishes well inside 180 min, but
-// a Break-in is an IEC 61951-2 forming charge — 0.1C for ~16 h — so 180 min cuts it
-// off at ~9% (observed fw 1.25: a 145 mA break-in died at 412 mAh, exactly 180 min in).
-// Break-in therefore needs a cut time above the 16 h charge phase; 990 min (16.5 h)
-// clears it, with the 45 °C temp cut still the real backstop.
-export const DEFAULT_CUT_MIN = 180, BREAKIN_CUT_MIN = 990;
+// Safety cut-off time (minutes). The charger ends the program with a "timer cut" error
+// (status 0x87) at this limit. It is TOTAL elapsed program time, NOT per-phase —
+// confirmed on fw 1.25 at two values: a 180 min cut fired at 179 min, and a 990 min
+// cut fired at 990 min (30 min into the discharge leg, after a full 16 h charge leg).
+// A normal fast charge finishes well inside 180 min. A Break-in is an IEC 61951-2
+// cycle — 0.1C ~16 h charge, discharge, ~16 h recharge — so it needs a timer covering
+// the WHOLE ~34 h+ cycle, not just one leg. 2700 min (45 h) leaves margin; the exact
+// full-cycle duration for this firmware is not yet measured (the 990 run only reached
+// the discharge leg). The 45 °C temp cut remains the real safety backstop.
+export const DEFAULT_CUT_MIN = 180, BREAKIN_CUT_MIN = 2700;
 /** Cut time for a mode by its label — Break-in needs the long forming-charge window. */
 export const cutMinFor = (modeLabel: string) =>
   modeLabel === "Break-in" ? BREAKIN_CUT_MIN : DEFAULT_CUT_MIN;
