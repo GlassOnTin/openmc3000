@@ -9,7 +9,7 @@ import { request, type Transport } from "../../src/transport/transport.ts";
 import { WebHidTransport } from "../../src/transport/webhid.ts";
 import {
   BREAKIN_CUT_MIN, CHEM, C_CHARGE, C_DISCHARGE, C_TERMINATE, DEFAULT_V, FALLBACK, LIMIT,
-  cutMinFor, endLabel, rateMa,
+  cutMinFor, endLabel, estimateSocPct, rateMa,
 } from "./defaults.ts";
 
 const app = document.getElementById("app")!;
@@ -39,17 +39,33 @@ async function liveRetry(slot: number): Promise<Live> {
   catch { await sleep(60); return withLock(() => live(slot)); }   // one retry
 }
 
-function slotRow(l: Live): string {
+// A battery glyph with 5 bars filled to the estimated SoC, plus the %. pct is an
+// APPROXIMATE voltage-based estimate (see estimateSocPct) — not a fuel gauge.
+function batteryGlyph(pct: number | null): string {
+  if (pct === null) return `<span class="bat na">—</span>`;
+  const bars = 5, on = Math.max(pct > 0 ? 1 : 0, Math.round(pct / 100 * bars));
+  const level = pct <= 20 ? "lo" : pct <= 50 ? "mid" : "hi";
+  const seg = Array.from({ length: bars }, (_, i) =>
+    `<rect x="${2 + i * 5.2}" y="2" width="4.2" height="10" class="${i < on ? "on" : "off"}"/>`).join("");
+  return `<span class="bat ${level}" title="≈${pct}% (voltage estimate)">`
+    + `<svg viewBox="0 0 32 14" width="32" height="14" role="img" aria-label="approximately ${pct} percent charged">`
+    + `<rect x="0.5" y="0.5" width="28" height="13" rx="2" class="shell"/>`
+    + `<rect x="29" y="4" width="2.5" height="6" rx="1" class="cap"/>${seg}</svg>`
+    + `<span class="pct">≈${pct}%</span></span>`;
+}
+
+function slotRow(l: Live, prog: SlotProgram | null): string {
   const present = l.voltageMv > 0 || l.statusRaw !== 0;
   const running = l.statusRaw === 1 || l.statusRaw === 2;   // charge / discharge
   // power (bytes 22-23) is only meaningful while running; stale in standby.
   const power = running ? `${(l.powerMw / 1000).toFixed(2)} W` : "—";
   const cells = present
     ? `<td>${l.batteryType}</td><td>${l.status}</td>
+       <td class="fill">${batteryGlyph(estimateSocPct(l, prog))}</td>
        <td>${(l.voltageMv / 1000).toFixed(3)} V</td>
        <td>${l.currentMa} mA</td><td>${l.capacityMah} mAh</td>
        <td>${power}</td>`
-    : `<td colspan="6" class="empty">— empty —</td>`;
+    : `<td colspan="7" class="empty">— empty —</td>`;
   const temp = `<td>${(l.temperatureRaw / 10).toFixed(1)} °C</td>`;   // slot sensor, present or not
   const charging = l.statusRaw === 1;
   // editing writes a slot's program; block it while that slot is actively running.
@@ -341,7 +357,7 @@ async function refresh() {
         const l = await liveRetry(s);
         lives[s] = l;
         latest[s] = l;
-        rows.push(slotRow(l));
+        rows.push(slotRow(l, programs[s]));
         const present = l.voltageMv > 0 || l.statusRaw !== 0;
         if (present) {
           const buf = history[s];
@@ -350,7 +366,7 @@ async function refresh() {
         }
       } catch {
         errs++;
-        rows.push(`<tr><th>Slot ${s + 1}</th><td colspan="7" class="empty">read error, retrying…</td><td></td></tr>`);
+        rows.push(`<tr><th>Slot ${s + 1}</th><td colspan="8" class="empty">read error, retrying…</td><td></td></tr>`);
       }
     }
     const el = document.getElementById("slots");
@@ -563,9 +579,12 @@ function renderConnected(name: string, sys: System) {
       <button id="stop">■ Stop (all)</button>
     </div>
     <table>
-      <thead><tr><th>Slot</th><th>Type</th><th>Status</th><th>Voltage</th><th>Current</th><th>Capacity</th><th>Power</th><th>Temp</th><th></th></tr></thead>
+      <thead><tr><th>Slot</th><th>Type</th><th>Status</th><th>Charge</th><th>Voltage</th><th>Current</th><th>Capacity</th><th>Power</th><th>Temp</th><th></th></tr></thead>
       <tbody id="slots"></tbody>
     </table>
+    <p class="note"><b>Charge</b> is an approximate state-of-charge estimate (marked ≈): from cell
+      voltage, and during a Li constant-voltage taper from the charge current. It is not a measured
+      fuel gauge — the charger reports no absolute charge level.</p>
     <p id="status" class="status"></p>
     <div id="editor"></div>
     <div id="analysis" class="analysis"></div>

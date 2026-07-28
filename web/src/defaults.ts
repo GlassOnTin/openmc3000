@@ -81,3 +81,61 @@ export const CHEM: Record<string, { min: number; max: number }> = {
   NiMH: { min: 0.9, max: 1.65 }, NiCd: { min: 0.9, max: 1.65 }, Eneloop: { min: 0.9, max: 1.65 },
   NiZn: { min: 1.2, max: 1.9 }, RAM: { min: 0.9, max: 1.65 },
 };
+
+// --- estimated state of charge -------------------------------------------
+// "% full" is NOT measured — the charger reports voltage, current, mAh-this-session
+// and internal resistance, not absolute SoC. This is a VOLTAGE-based estimate, so
+// treat it as approximate. Two honesty measures: (1) back the IR drop out of the
+// terminal voltage using the device's own resistance reading, to approximate the
+// cell's rested open-circuit voltage — terminal voltage reads high under charge and
+// low under discharge, and that offset is I·R; (2) map OCV→SoC through a real
+// per-cell curve for the Li chemistries, since their mid-range is flat and a linear
+// voltage map would badly overstate the middle. Ni chemistries fall back to linear
+// within the safe window (their OCV curve is flat and less standard — rougher).
+import type { Live, SlotProgram } from "../../src/protocol/commands.ts";
+
+// [volts-per-cell, SoC %] breakpoints, rested OCV. Li-ion from a standard discharge
+// OCV table; the 4.35 variant shifts the top; LiFePO4 is deliberately flat.
+const OCV_SOC: Record<string, [number, number][]> = {
+  LiIon: [[3.0, 0], [3.3, 5], [3.45, 10], [3.55, 20], [3.65, 35], [3.75, 50], [3.85, 65], [3.95, 78], [4.05, 90], [4.15, 97], [4.2, 100]],
+  "LiIo4.35": [[3.0, 0], [3.3, 4], [3.45, 8], [3.55, 17], [3.65, 30], [3.75, 43], [3.85, 57], [3.95, 70], [4.1, 85], [4.25, 96], [4.35, 100]],
+  LiFe: [[2.5, 0], [3.0, 5], [3.2, 20], [3.28, 50], [3.32, 80], [3.4, 95], [3.6, 100]],
+};
+
+function interp(table: [number, number][], x: number): number {
+  if (x <= table[0][0]) return table[0][1];
+  const last = table[table.length - 1];
+  if (x >= last[0]) return last[1];
+  for (let i = 1; i < table.length; i++) {
+    const [x1, y1] = table[i]; const [x0, y0] = table[i - 1];
+    if (x <= x1) return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+  }
+  return last[1];
+}
+
+/** Approximate state of charge (%), or null when no cell / unknown chemistry.
+ *  Voltage/OCV-based, except in a Li CV phase where the terminal is pinned at the
+ *  target and only the tapering current carries SoC — there we use the current. */
+export function estimateSocPct(l: Live, prog?: SlotProgram | null): number | null {
+  if (l.voltageMv <= 0) return null;                 // empty slot
+  const chem = CHEM[l.batteryType];
+  if (!chem) return null;
+  // Li CV phase: charging, terminal at/above target. Voltage is clamped so it says
+  // nothing; map the current taper from the charge setpoint (~80%) to the termination
+  // current (100%). Without the program we can't detect CV and fall back to voltage.
+  if (prog && l.batteryType.startsWith("Li") && l.statusRaw === 1
+      && l.voltageMv >= prog.chargeEndMv - 30 && prog.chargeCurrentMa > prog.chargeEndCurrentMa) {
+    const iTerm = Math.max(prog.chargeEndCurrentMa, 20);
+    const frac = Math.max(0, Math.min(1, (prog.chargeCurrentMa - l.currentMa) / (prog.chargeCurrentMa - iTerm)));
+    return Math.round(80 + 20 * frac);
+  }
+  let ocv = l.voltageMv / 1000;
+  if (l.resistanceMOhm > 0) {                         // back out the I·R offset
+    const drop = (l.currentMa / 1000) * (l.resistanceMOhm / 1000);
+    if (l.statusRaw === 1) ocv -= drop;              // charging: terminal reads high
+    else if (l.statusRaw === 2) ocv += drop;         // discharging: terminal reads low
+  }
+  const tab = OCV_SOC[l.batteryType];
+  const soc = tab ? interp(tab, ocv) : (ocv - chem.min) / (chem.max - chem.min) * 100;
+  return Math.max(0, Math.min(100, Math.round(soc)));
+}

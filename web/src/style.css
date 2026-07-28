@@ -53,3 +53,14 @@ button.rec-on { color: #fff; background: #c0392b; border-color: #c0392b; }
 .acard dt { color: #999; }
 .acard dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 .anote { grid-column: 1 / -1; font-size: .8rem; }
+
+/* estimated-SoC battery glyph (voltage-based; see estimateSocPct) */
+.bat { display: inline-flex; align-items: center; gap: .35rem; white-space: nowrap; }
+.bat svg .shell { fill: none; stroke: currentColor; stroke-opacity: .45; }
+.bat svg .cap { fill: currentColor; fill-opacity: .45; }
+.bat svg rect.off { fill: currentColor; opacity: .12; }
+.bat svg rect.on { fill: var(--bat); }
+.bat.lo { --bat: #e0503a; } .bat.mid { --bat: #e0a13a; } .bat.hi { --bat: #3ab06a; }
+.bat .pct { font-size: .8rem; color: #888; font-variant-numeric: tabular-nums; }
+.bat.na { color: #999; }
+td.fill { white-space: nowrap; }

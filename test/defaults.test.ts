@@ -6,8 +6,16 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import {
   BREAKIN_CUT_MIN, C_CHARGE, C_DISCHARGE, C_TERMINATE, CHEM, DEFAULT_CUT_MIN, DEFAULT_V,
-  FALLBACK, I_MIN, LIMIT, cutMinFor, endLabel, isLi, rateMa,
+  FALLBACK, I_MIN, LIMIT, cutMinFor, endLabel, estimateSocPct, isLi, rateMa,
 } from "../web/src/defaults.ts";
+import type { Live } from "../src/protocol/commands.ts";
+
+// minimal Live for the SoC estimator (it only reads these fields)
+const live = (o: Partial<Live>): Live => ({
+  slot: 0, batteryType: "LiIon", mode: 0, statusRaw: 0, status: "standby",
+  voltageMv: 0, currentMa: 0, capacityMah: 0, powerMw: 0, temperatureRaw: 250,
+  resistanceMOhm: 0, energyMwh: 0, ...o,
+} as Live);
 import { BATTERY_TYPES } from "../src/protocol/commands.ts";
 
 const chg = (cap: number) => rateMa(cap, C_CHARGE, FALLBACK.chg, LIMIT.chg);
@@ -95,6 +103,41 @@ test("Break-in gets a cut time covering the whole charge+discharge+recharge cycl
   assert.equal(cutMinFor("Charge"), DEFAULT_CUT_MIN);
   assert.equal(cutMinFor("Discharge"), DEFAULT_CUT_MIN);
   assert.ok(BREAKIN_CUT_MIN <= LIMIT.cutmin, "break-in default exceeds the input cap");
+});
+
+test("estimated SoC: endpoints, no cell, and unknown chemistry", () => {
+  assert.equal(estimateSocPct(live({ voltageMv: 0 })), null);              // empty slot
+  assert.equal(estimateSocPct(live({ voltageMv: 3700, batteryType: "unknown(9)" })), null);
+  assert.equal(estimateSocPct(live({ voltageMv: 4200 })), 100);           // Li-ion full
+  assert.equal(estimateSocPct(live({ voltageMv: 3000 })), 0);             // Li-ion empty
+  assert.equal(estimateSocPct(live({ voltageMv: 4300 })), 100);          // clamped, not >100
+});
+
+test("estimated SoC: Li-ion mid-range uses the curve, not a linear voltage map", () => {
+  const mid = estimateSocPct(live({ voltageMv: 3750 }))!;                 // ~50% on the curve
+  assert.ok(mid >= 45 && mid <= 55, `3.75 V → ${mid}%`);
+  // a naive linear map of (3.75-2.5)/(4.2-2.5) would read ~74% — the curve must be lower
+  assert.ok(mid < 65, "curve must not overstate the flat mid-range like a linear map");
+});
+
+test("estimated SoC: IR correction lowers a charging reading, raises a discharging one", () => {
+  const base = estimateSocPct(live({ voltageMv: 4050 }))!;                // 4.05 V at rest
+  const chg = estimateSocPct(live({ voltageMv: 4050, statusRaw: 1, currentMa: 2000, resistanceMOhm: 30 }))!;
+  const dis = estimateSocPct(live({ voltageMv: 4050, statusRaw: 2, currentMa: 2000, resistanceMOhm: 30 }))!;
+  assert.ok(chg < base, `charging estimate ${chg} should be below the rested ${base}`);
+  assert.ok(dis > base, `discharging estimate ${dis} should be above the rested ${base}`);
+});
+
+test("estimated SoC: Li CV phase uses current taper, not the pinned voltage", () => {
+  // Terminal pinned at 4.20 V target, charging. Voltage says 100%, but a 2.6 A taper
+  // from a 3.0 A setpoint means the cell only just entered CV (~80%), not full.
+  const prog = { chargeEndMv: 4200, chargeCurrentMa: 3000, chargeEndCurrentMa: 100 } as SlotProgram;
+  const entry = estimateSocPct(live({ voltageMv: 4200, statusRaw: 1, currentMa: 3000 }), prog)!;
+  const near = estimateSocPct(live({ voltageMv: 4200, statusRaw: 1, currentMa: 2608, resistanceMOhm: 21 }), prog)!;
+  const done = estimateSocPct(live({ voltageMv: 4200, statusRaw: 1, currentMa: 100 }), prog)!;
+  assert.equal(entry, 80);                     // CV entry
+  assert.ok(near >= 80 && near <= 86, `just into CV → ${near}%, not the voltage's ~97%`);
+  assert.equal(done, 100);                     // tapered to termination
 });
 
 test("the end-voltage field is labelled by what it does for that chemistry", () => {
