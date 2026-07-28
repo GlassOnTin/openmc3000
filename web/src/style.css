@@ -64,6 +64,7 @@ button.rec-on { color: #fff; background: #c0392b; border-color: #c0392b; }
 .bat .pct { font-size: .8rem; color: #888; font-variant-numeric: tabular-nums; }
 .bat.na { color: #999; }
 .bat svg { vertical-align: middle; }
+.bat { transform: translateX(.3rem); }   /* extra rightward nudge past the cell padding */
 /* right-aligned like the numeric columns, nudged in from the border so the glyph
  * and % don't sit jammed left of a wide column */
 td.fill { white-space: nowrap; text-align: right; padding-right: .2rem; }
