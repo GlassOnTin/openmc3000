@@ -251,7 +251,10 @@ function analyze(hist: Sample[], l: Live, prog: SlotProgram | null): { k: string
   const running = l.statusRaw === 1 || l.statusRaw === 2;
   const nominal = prog?.capacityMah ?? 0;
   if (hist.length >= 2) rows.push({ k: "Elapsed", v: fmtDur((hist[hist.length - 1].ts - hist[0].ts) / 1000) });
-  if (nominal > 0) rows.push({ k: l.statusRaw === 2 ? "Removed vs rated" : "Charged vs rated", v: `${(l.capacityMah / nominal * 100).toFixed(0)}% of ${nominal} mAh` });
+  // mAh MOVED this session, not state of charge — a cell that started part-full
+  // shows a small %. The battery glyph in the table is the fill estimate. Labelled
+  // to make that distinction: "added/removed this session", not "charged".
+  if (nominal > 0) rows.push({ k: l.statusRaw === 2 ? "Removed this session" : "Added this session", v: `${l.capacityMah} mAh · ${(l.capacityMah / nominal * 100).toFixed(0)}% of ${nominal} rated` });
   rows.push({ k: "Energy", v: `${(l.energyMwh / 1000).toFixed(2)} Wh` });
   if (l.resistanceMOhm > 0) rows.push({ k: "Internal resistance", v: `${l.resistanceMOhm} mΩ` });
   if (nominal > 0 && running) rows.push({ k: "C-rate", v: `${(l.currentMa / nominal).toFixed(2)}C` });
