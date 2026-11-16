@@ -55,6 +55,14 @@ export function switchConfig(id: string, base: string, availTopic: string, devic
   };
 }
 
+export function slotSwitchConfig(slot: number, id: string, base: string, availTopic: string, device: Device): Record<string, unknown> {
+  return {
+    name: `Slot ${slot} charging`, unique_id: `${id}_s${slot}_run`, icon: "mdi:battery-charging",
+    command_topic: `${base}/cmd/slot${slot}/run`, state_topic: `${base}/slot${slot}/run`,
+    payload_on: "ON", payload_off: "OFF", availability_topic: availTopic, device,
+  };
+}
+
 /** HA number: set a slot's charge current (mA) via SET_PROGRAM. */
 export function numberConfig(slot: number, id: string, base: string, availTopic: string, device: Device): Record<string, unknown> {
   return {

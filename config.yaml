@@ -1,0 +1,25 @@
+name: openMC3000 MQTT bridge
+version: "0.1.0"
+slug: openmc3000
+description: USB HID bridge for the SkyRC MC3000 with MQTT discovery and optional control
+url: https://github.com/GlassOnTin/openmc3000
+arch:
+  - aarch64
+  - amd64
+startup: application
+boot: auto
+host_dbus: true
+options:
+  mqtt_url: null
+  discovery_prefix: homeassistant
+  hidraw_path: null
+  enable_control: true
+  ble_address: ""
+schema:
+  mqtt_url: str
+  mqtt_username: str?
+  mqtt_password: password?
+  discovery_prefix: str
+  hidraw_path: device(subsystem=hidraw)
+  enable_control: bool
+  ble_address: str?
