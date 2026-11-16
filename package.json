@@ -7,7 +7,7 @@
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test 'test/*.test.ts'",
+    "test": "node --experimental-strip-types --test \"test/*.test.ts\"",
     "cli": "node --experimental-strip-types src/cli.ts"
   }
 }

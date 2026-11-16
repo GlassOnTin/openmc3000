@@ -102,14 +102,23 @@ STOP →  status=0  3.643V     0mA
 
 The ramp takes ~7 s, so a poll sooner than that will read a misleadingly low current.
 
-**START/STOP are global — there is no per-slot start over USB. [verified]** Confirmed
-three ways: (1) the frames carry no slot field (byte 3 is a fixed `00`, byte 4 the
-checksum), unlike `0x55`/`0x5F`/`0x11`; (2) a USB capture of SkyRC's PC Link driving the
-charger showed a per-slot start action and a start-all action emit the *identical*
-`0F 03 05 00 05`; (3) PC Link V1.06 offers only a global Start button — its per-slot
-"checkboxes" are chart-curve display toggles, not slot control. To run a subset of slots,
-program the unwanted slots off (or leave them empty) and issue the global START; the
-charger runs whatever occupied slots are programmed to run.
+**The known USB START/STOP commands are global. [verified]** Their frames carry no
+slot field (byte 3 is `00`, byte 4 the checksum), unlike `0x55`/`0x5F`/`0x11`.
+[An independent USB implementation](https://github.com/jaypikay/mc3000/blob/5bbd478fee38702433f96e7863880de1354b78d0/mc3000.py)
+uses the same global frames; [another implementation's notes](https://github.com/nuclearcat/SkyRCMC3000-GUI/blob/b9fe4313b92ff669eccdb15dcc9c2635cf773f3c/docs/protocol_notes.md)
+also report no known individual USB start. This is not proof that no other USB command
+exists. Leave unwanted slots empty or configure them not to run before issuing START;
+changing a slot program has its own safety risks.
+
+**BLE is different.** The independently developed
+[SkyRC BLE Home Assistant integration](https://github.com/jperquin/ha-skyrc-mc3000)
+documents per-slot start/stop via Bluetooth, and
+[mc3000-mcp's BLE notes](https://github.com/nietonchique/mc3000-mcp/blob/main/docs/ble-protocol-notes.md)
+describe opcodes `0x05` and `0xFE` with slot bitmasks. That project reports live tests
+on firmware 1.23 and warns that a combined stop mask `0x0F` does not stop charging
+on that firmware. These are external reports, not tests of this repository or of USB:
+BLE frames cannot simply be sent to the USB HID interface. No per-slot BLE or USB
+control is implemented here.
 
 ### LIVE reply (`0x55`)
 

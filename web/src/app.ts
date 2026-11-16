@@ -607,7 +607,7 @@ function renderConnected(name: string, sys: System) {
       </span>
     </div>
     <div id="charts" class="charts"></div>
-    <p class="note">Start/Stop are global — the MC3000 has no per-slot start over USB/BLE.
+    <p class="note">Start/Stop here use global USB commands; per-slot BLE control is not implemented.
        Editing writes charge/discharge current only; other program fields are preserved.</p>
   `);
   document.getElementById("start")!.addEventListener("click", onStart);

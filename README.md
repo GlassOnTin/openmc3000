@@ -21,11 +21,11 @@ over WebHID. Plug the charger in (on its own DC supply), click *Connect*, pick t
 
 - **Live telemetry** — per-slot voltage, current, capacity, power, and temperature, polled
   once a second.
-- **Start / Stop** the charger (global — the MC3000 has no per-slot start over USB).
+- **Start / Stop** the charger (the known USB commands act globally).
 - **Full slot-program editing** — battery type, mode, capacity, charge/discharge current,
-  target & cut-off voltage, termination current. Every field verified to round-trip on
-  hardware; the charger clamps to chemistry limits and the result is read back. Plus
-  **reset-to-defaults** (chemistry-standard values).
+  target & cut-off voltage, termination current. Results are read back, but not every
+  field or firmware version has been independently verified; the charger does not
+  reliably reject unsafe values. Plus **reset-to-defaults** (values requiring review).
 - **Live charts** — per-slot voltage/current/capacity/temperature over a real time axis.
   The voltage chart auto-ranges from the slot's own targets and the cell chemistry, with
   green/amber/red **safety bands** and dashed target/cut-off reference lines.
@@ -39,7 +39,7 @@ over WebHID. Plug the charger in (on its own DC supply), click *Connect*, pick t
 Every protocol claim behind these is marked verified/unverified in [`PROTOCOL.md`](PROTOCOL.md);
 the charger used for verification runs firmware 1.25 / hardware 2.2.
 
-## Two front-ends, one codec
+## Front-ends and bridge, one codec
 
 The wire protocol (`src/protocol`) and a transport interface (`src/transport`) are shared;
 each front-end is a thin consumer:
@@ -58,11 +58,19 @@ each front-end is a thin consumer:
 
   $ npm run cli start      # …and: watch, stop
   ```
+- **[`bridge/`](bridge/)** — MQTT telemetry and optional control; also available
+  as a [Home Assistant OS add-on](DOCS.md).
 
 ## Running it
 
 **Web app:** just open <https://glassontin.github.io/openmc3000/> in desktop Chrome or Edge
 (WebHID is Chromium-desktop only). To hack on it: `cd web && npm install && npm run dev`.
+
+**Home Assistant OS:** Add this repository to the app/add-on store, configure
+MQTT and the host's hidraw device, and install the bridge. Optional BLE control
+adds individual slot switches while USB continues to provide telemetry. See [the full setup
+and safety instructions](DOCS.md). Control is enabled by default and can start
+real charges and change programs; set `enable_control: false` for telemetry only.
 
 **CLI:** Node 22+ (for `--experimental-strip-types`), no dependencies. On Linux, `/dev/hidraw*`
 is root-only by default, so add a udev rule:

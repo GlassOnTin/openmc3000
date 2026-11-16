@@ -16,6 +16,18 @@ export function findDevice(): string {
   throw new Error("MC3000 not found — is it plugged in and powered from its own DC supply?");
 }
 
+/** Reject an explicit hidraw node if sysfs does not identify it as an MC3000. */
+export function validateDevice(path: string): string {
+  const match = path.match(/^\/dev\/(hidraw\d+)$/);
+  if (!match) throw new Error("Expected a /dev/hidrawN device path");
+  const uevent = readFileSync(`/sys/class/hidraw/${match[1]}/device/uevent`, "utf8");
+  const id = uevent.match(/HID_ID=\w+:0*([0-9A-Fa-f]+):0*([0-9A-Fa-f]+)/);
+  if (!id || parseInt(id[1], 16) !== VID || parseInt(id[2], 16) !== PID) {
+    throw new Error(`${path} is not an MC3000 HID device (0000:0001)`);
+  }
+  return path;
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -26,8 +38,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export class HidrawTransport implements Transport {
   private fd: number;
 
-  constructor(path: string = findDevice()) {
-    this.fd = openSync(path, constants.O_RDWR | constants.O_NONBLOCK);
+  constructor(path?: string) {
+    this.fd = openSync(path ? validateDevice(path) : findDevice(), constants.O_RDWR | constants.O_NONBLOCK);
   }
 
   async send(report: Uint8Array): Promise<void> {
